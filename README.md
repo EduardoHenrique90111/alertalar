@@ -1,1 +1,281 @@
-# alertalar
+# AlertaLar
+
+Sistema web de consulta e análise de riscos de enchentes e alagamentos em imóveis e regiões.
+
+A pessoa informa um endereço, confirma a posição no mapa e recebe uma classificação
+(**baixo risco**, **risco moderado**, **alto risco** ou **dados insuficientes**) com a explicação
+de cada fator, as fontes usadas e a data dos dados. A situação atual (chuva e rios) aparece à
+parte e não altera a classificação.
+
+## Objetivo
+
+Ajudar moradores, compradores e inquilinos a saber se um endereço fica em região historicamente
+afetada por enchentes ou geograficamente suscetível a alagamentos, sempre separando:
+
+- **risco mapeado**: setores de risco oficiais do Serviço Geológico do Brasil;
+- **suscetibilidade geográfica**: proximidade de rios e córregos e altura relativa do terreno;
+- **risco histórico**: registros oficiais do município e relatos de moradores verificados;
+- **situação atual**: chuva e vazão de rios estimadas por modelos (apenas informativo).
+
+O sistema nunca afirma que um local está livre de enchentes e não inventa dados: quando uma
+fonte não responde ou não cobre a região, o fator aparece como indisponível e não entra na conta.
+
+## Tecnologias
+
+| Camada | Tecnologia |
+|---|---|
+| Back-end | Java 21, Spring Boot 4.1 (Spring Web MVC, Spring Data JPA, Spring Validation, Spring Security, Actuator), Maven |
+| Banco de dados | PostgreSQL, Hibernate/JPA, Flyway (migrations) |
+| Front-end | HTML5, CSS3, JavaScript puro (módulos ES), Leaflet 1.9.4 + OpenStreetMap |
+| Testes | JUnit 5/6 (Jupiter) e Mockito |
+| Integrações | ViaCEP, Nominatim (OSM), IBGE Localidades, Overpass (OSM), Open-Meteo (elevação Copernicus, chuva, vazão GloFAS), SGB (setores de risco); importação de planilhas do S2iD/Atlas Digital |
+
+Fontes tipográficas (Overpass e Public Sans, licença OFL) e Leaflet ficam dentro do projeto:
+o front-end não depende de CDN.
+
+## Requisitos
+
+- **JDK 21** (Temurin, Oracle ou o JDK baixado pelo IntelliJ IDEA)
+- **Maven 3.9+** (o IntelliJ IDEA já traz um Maven embutido)
+- **PostgreSQL 14+**
+- Internet: para o Maven baixar as dependências e para o sistema consultar as APIs públicas
+
+## Instalação
+
+### 1. PostgreSQL
+
+Crie o usuário e o banco (uma vez):
+
+```bash
+psql -U postgres -f database/criar-banco.sql
+```
+
+Troque a senha `troque_esta_senha` no script antes de executar. As tabelas são criadas
+automaticamente pelo Flyway quando o back-end inicia.
+
+### 2. Variáveis de ambiente
+
+```bash
+cp .env.example .env
+```
+
+Edite o `.env` (ele fica fora do Git):
+
+| Variável | Para quê |
+|---|---|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Conexão com o PostgreSQL |
+| `ALERTALAR_ADMIN_EMAIL`, `ALERTALAR_ADMIN_SENHA` | Cria o administrador (moderação e importação). Senha com 10+ caracteres, letras e números |
+| `ALERTALAR_CONTATO_EMAIL` | Contato enviado às APIs públicas (pedido pela política do Nominatim) |
+| `PORT` | Porta HTTP (padrão 8080) |
+| `COOKIE_SECURE`, `FORWARD_HEADERS_STRATEGY` | Use `true` e `framework` quando publicar com HTTPS atrás de proxy |
+
+O back-end lê o `.env` da raiz do projeto ou da pasta `backend`. Variáveis de ambiente do
+sistema operacional têm prioridade sobre ele.
+
+### 3. APIs externas
+
+Nenhuma chave é necessária: todas as integrações ativas usam serviços públicos gratuitos.
+Os endereços podem ser trocados por variáveis (`NOMINATIM_URL`, `OVERPASS_URL` etc., veja o
+`.env.example`), por exemplo para usar uma instância própria do Nominatim. Detalhes, limites
+de uso e situação de cada fonte: [docs/fontes-de-dados.md](docs/fontes-de-dados.md).
+
+## Como iniciar o back-end
+
+**No IntelliJ IDEA**
+
+1. *File → Open* e selecione a pasta `alertalar` (o IntelliJ importa o projeto Maven).
+2. *File → Project Structure → SDK*: escolha Java 21.
+3. Abra `backend/src/main/java/com/alertalar/AlertaLarApplication.java` e clique em *Run*.
+
+**No terminal**
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+Para gerar o JAR executável:
+
+```bash
+cd backend
+mvn package
+java -jar target/alertalar.jar
+```
+
+## Como iniciar o front-end
+
+Não é preciso um servidor separado: o back-end serve o front-end. Com a aplicação rodando,
+abra **http://localhost:8080**.
+
+Durante o desenvolvimento, os arquivos são lidos direto da pasta `frontend/` (basta recarregar
+o navegador após editar). No `mvn package`, o front-end é copiado para dentro do JAR.
+
+### Primeiros passos
+
+1. Consulte um endereço na página inicial.
+2. Entre com o administrador configurado no `.env` e abra **Moderação**.
+3. Para ativar o histórico oficial municipal, baixe a planilha de desastres no
+   [S2iD](https://s2id.mi.gov.br) ou no [Atlas Digital](https://atlasdigital.mdr.gov.br), salve
+   como CSV e importe pela Moderação.
+
+## Testes
+
+```bash
+cd backend
+mvn test
+```
+
+Há 99 testes (JUnit + Mockito): validação de endereços, geocodificação, fatores e classificação
+de risco, processamento da consulta, registro e moderação de ocorrências, importação de
+planilhas, tratamento de erros, segurança e comunicação HTTP com as APIs externas (contra um
+servidor local que responde no mesmo formato das APIs reais).
+
+O teste de **ponta a ponta** (`AlertaLarIntegracaoTest`) sobe a aplicação inteira com
+PostgreSQL real e percorre consulta, persistência, relato, moderação, importação, situação
+atual, cadastro e login. Ele só roda quando existe a variável `ALERTALAR_TEST_DB_URL`
+apontando para um banco **exclusivo de testes** (os dados dele são apagados):
+
+```bash
+# Linux/macOS
+export ALERTALAR_TEST_DB_URL=jdbc:postgresql://localhost:5432/alertalar_test
+export ALERTALAR_TEST_DB_USERNAME=alertalar
+export ALERTALAR_TEST_DB_PASSWORD=sua_senha
+mvn test
+```
+
+```powershell
+# Windows (PowerShell)
+$env:ALERTALAR_TEST_DB_URL="jdbc:postgresql://localhost:5432/alertalar_test"
+$env:ALERTALAR_TEST_DB_USERNAME="alertalar"
+$env:ALERTALAR_TEST_DB_PASSWORD="sua_senha"
+mvn test
+```
+
+## Endpoints
+
+Todas as respostas são JSON; erros seguem o formato Problem Details (RFC 9457), com mensagens
+em português e, em erros de validação, o campo `erros` por campo.
+
+| Método | Caminho | Acesso | Descrição |
+|---|---|---|---|
+| GET | `/api/enderecos/cep/{cep}` | público | Dados do CEP (ViaCEP) para preencher o formulário |
+| GET | `/api/enderecos/buscar?rua=&numero=&bairro=&cidade=&estado=&cep=` | público | Valida e geocodifica; devolve candidatos e a precisão |
+| POST | `/api/consultas` | público | Realiza a consulta de risco e grava o resultado (201) |
+| GET | `/api/consultas/{id}` | público (link com UUID) | Resultado completo de uma consulta |
+| GET | `/api/consultas/minhas` | logado | Histórico de consultas do usuário |
+| GET | `/api/ocorrencias?estado=&municipio=&origem=&pagina=&tamanho=` | público | Ocorrências confirmadas (oficiais e relatos validados) |
+| GET | `/api/ocorrencias/proximas?lat=&lon=&raio=&anos=` | público | Ocorrências confirmadas em torno de um ponto |
+| POST | `/api/ocorrencias` | público | Envia relato (fica `PENDENTE`) |
+| GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
+| GET | `/api/situacao-atual?lat=&lon=` | público | Chuva e vazão atuais (não altera a classificação) |
+| POST | `/api/auth/registro` | público | Cria conta e já entra |
+| POST | `/api/auth/login` | público | Entra (sessão) |
+| POST | `/api/auth/logout` | logado | Sai |
+| GET | `/api/auth/me` | público | Usuário logado (204 se ninguém) |
+| GET | `/api/auth/csrf` | público | Gera o cookie `XSRF-TOKEN` |
+| GET | `/api/admin/resumo` | ADMIN | Quantidade de relatos pendentes |
+| GET | `/api/admin/ocorrencias?status=PENDENTE` | ADMIN | Relatos para moderação (inclui contato do relator) |
+| PATCH | `/api/admin/ocorrencias/{id}/validacao` | ADMIN | Corpo `{"status":"CONFIRMADA","observacao":"..."}` (ou `REJEITADA`) |
+| POST | `/api/admin/importacoes/registros-oficiais` | ADMIN | Upload `multipart/form-data` (campo `arquivo`, CSV do S2iD/Atlas) |
+| GET | `/actuator/health` | público | Verificação de saúde |
+
+Requisições `POST`/`PATCH` exigem o token CSRF: leia o cookie `XSRF-TOKEN` e envie no cabeçalho
+`X-XSRF-TOKEN` (o front-end faz isso em `frontend/js/api.js`). Exemplo com curl:
+
+```bash
+curl -c c.txt -b c.txt http://localhost:8080/api/auth/csrf
+TOKEN=$(grep XSRF-TOKEN c.txt | awk '{print $7}')
+curl -c c.txt -b c.txt -X POST http://localhost:8080/api/consultas \
+  -H "Content-Type: application/json" -H "X-XSRF-TOKEN: $TOKEN" \
+  -d '{"rua":"Rua Exemplo","numero":"100","cidade":"Canoas","estado":"RS"}'
+```
+
+## Estrutura do projeto
+
+```
+alertalar/
+├── backend/
+│   ├── pom.xml
+│   └── src/
+│       ├── main/java/com/alertalar/
+│       │   ├── controller/     endpoints REST
+│       │   ├── service/        regras de negócio
+│       │   │   └── analise/    metodologia de risco (fatores independentes)
+│       │   ├── repository/     Spring Data JPA
+│       │   ├── entity/         entidades e enums
+│       │   ├── dto/            entrada e saída da API
+│       │   ├── config/         segurança, propriedades, limites
+│       │   ├── exception/      exceções e tratamento global
+│       │   ├── integration/    clientes das APIs externas e leitor do S2iD
+│       │   └── util/           texto, UFs e geografia
+│       ├── main/resources/
+│       │   ├── application.properties
+│       │   └── db/migration/   migrations Flyway
+│       └── test/java/          testes JUnit + Mockito
+├── frontend/
+│   ├── index.html, resultado.html, ocorrencias.html, relatar.html,
+│   │   entrar.html, painel.html, metodologia.html
+│   ├── css/estilo.css
+│   ├── js/                     api.js, ui.js, mapa.js e scripts de cada página
+│   └── assets/                 fontes, ícone e Leaflet
+├── database/                   script de criação do banco e modelo
+├── docs/                       arquitetura e fontes de dados
+├── .env.example
+├── .gitignore
+├── pom.xml                     agregador (abre o projeto inteiro no IntelliJ)
+└── README.md
+```
+
+## Publicação na internet
+
+O GitHub guarda o código, mas não executa Java nem PostgreSQL (o GitHub Pages só publica
+sites estáticos). Para outras pessoas acessarem, o caminho gratuito sugerido é:
+**GitHub** (código) + **Render** (roda o Java pelo `Dockerfile`) + **Neon** (PostgreSQL).
+
+1. **GitHub:** no IntelliJ, *Git → GitHub → Share Project on GitHub* (ou *VCS → Share Project
+   on GitHub*). O `.gitignore` impede o envio do `.env` com as senhas.
+2. **Neon** (neon.com): crie um projeto e copie a *connection string*, que tem o formato
+   `postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`.
+3. **Render** (render.com): *New → Web Service*, conecte o repositório do GitHub; o Render
+   detecta o `Dockerfile`. Escolha o plano *Free* e, em *Environment*, cadastre:
+
+   | Variável | Valor |
+   |---|---|
+   | `DB_URL` | `jdbc:postgresql://HOST/BANCO?sslmode=require` (a string do Neon trocando `postgresql://USUARIO:SENHA@` por `jdbc:postgresql://`) |
+   | `DB_USERNAME` | USUARIO da string do Neon |
+   | `DB_PASSWORD` | SENHA da string do Neon |
+   | `ALERTALAR_ADMIN_EMAIL` / `ALERTALAR_ADMIN_SENHA` | administrador |
+   | `ALERTALAR_CONTATO_EMAIL` | e-mail de contato para as APIs públicas |
+   | `COOKIE_SECURE` | `true` |
+   | `FORWARD_HEADERS_STRATEGY` | `framework` |
+
+4. Após o deploy, o Render mostra o endereço público (`https://seu-app.onrender.com`).
+   Cada novo envio ao GitHub gera um novo deploy automaticamente.
+
+Observações:
+- No plano gratuito do Render o serviço "dorme" após 15 minutos sem acesso; o primeiro acesso
+  seguinte demora cerca de 1 minuto. O PostgreSQL gratuito do próprio Render expira em 30 dias,
+  por isso a sugestão do Neon. Planos e limites mudam: confira nos sites antes de publicar.
+- Com tráfego alto, troque o Nominatim público e os blocos de mapa do OpenStreetMap por
+  serviços próprios ou comerciais: as políticas de uso das instâncias públicas proíbem uso intenso.
+- O limitador de requisições é em memória; com várias instâncias, use um limitador distribuído.
+- Para rodar o JAR em qualquer servidor: `java -jar alertalar.jar` com Java 21 e as mesmas variáveis.
+
+## Limitações conhecidas
+
+- A classificação resume indícios nos dados disponíveis: não é laudo técnico, estudo
+  hidrológico nem previsão meteorológica.
+- Modelo de elevação de 90 m (Copernicus GLO-90): erro vertical de alguns metros e pode incluir
+  construções e vegetação.
+- O mapeamento de rios e córregos do OpenStreetMap varia por região; córregos canalizados podem
+  não aparecer.
+- O SGB mapeou setores de risco em parte dos municípios; a ausência de setor não é tratada como
+  segurança.
+- Registros do S2iD são municipais (não indicam a rua) e dependem de importação manual da
+  planilha, pois não há API pública documentada. A importação aceita CSV (não XLSX).
+- CEMADEN, INMET e ANA ainda não estão integrados (acesso exige credencial ou não há API
+  documentada); estão registrados como fontes planejadas.
+- O índice da camada do SGB (`/MapServer/0`) segue o serviço público atual; se o SGB mudar o
+  serviço, ajuste `SGB_SETORES_RISCO_URL`.
+- Vazão do GloFAS tem resolução de ~5 km e pode não representar rios pequenos.
+- O link de um resultado é público para quem o tiver (identificador UUID não sequencial).

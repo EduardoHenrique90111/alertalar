@@ -1,0 +1,21 @@
+# Credenciais locais
+.env
+*.env
+!.env.example
+
+# Maven
+target/
+backend/target/
+
+# IntelliJ IDEA / Eclipse / VS Code
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
