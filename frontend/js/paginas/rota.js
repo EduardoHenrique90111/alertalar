@@ -16,6 +16,8 @@ preencherUfs(formBusca.estado);
 const mapa = criarMapa($('mapa-rota'));
 const camadaResultado = L.layerGroup().addTo(mapa);
 let marcadorPartida = null;
+let marcadorDestino = null;
+let tipoDestino = 'ALTO'; // ALTO: terreno mais alto automático; ESCOLHIDO: lugar escolhido pela pessoa
 let modo = 'A_PE';
 let ultimaRota = null;
 
@@ -128,6 +130,26 @@ function definirPartida(latlng, origem, descricao) {
   }
 }
 
+/** Destino escolhido pela pessoa (só no modo "um lugar que eu escolher"). */
+function definirDestino(latlng, origem, descricao) {
+  if (!marcadorDestino) {
+    marcadorDestino = L.marker(latlng, { icon: icone('destino'), draggable: true, title: 'Destino', zIndexOffset: 950 }).addTo(mapa);
+    marcadorDestino.on('dragend', () => definirDestino(marcadorDestino.getLatLng(), 'mapa'));
+  } else {
+    marcadorDestino.setLatLng(latlng);
+    if (!mapa.hasLayer(marcadorDestino)) marcadorDestino.addTo(mapa);
+  }
+  const texto = descricao || (origem === 'mapa' ? 'ponto marcado no mapa' : 'endereço encontrado');
+  $('destino-texto').textContent = `Destino: ${texto} (${latlng.lat.toFixed(5).replace('.', ',')}, ${latlng.lng.toFixed(5).replace('.', ',')}).`;
+  // Com partida e destino definidos, o caminho já é calculado (e a rota antiga, se houver, some)
+  if (marcadorPartida) {
+    apagarRota();
+    mapa.fitBounds([marcadorPartida.getLatLng(), latlng], { padding: [50, 50], maxZoom: 16 });
+    clearTimeout(temporizadorRecalculo);
+    temporizadorRecalculo = setTimeout(calcular, 500);
+  }
+}
+
 function apagarRota() {
   camadaResultado.clearLayers();
   $('resultado-rota').classList.add('oculto');
@@ -139,10 +161,33 @@ function nomeCurto(enderecoEncontrado) {
   return (enderecoEncontrado || '').split(',').slice(0, 3).map((t) => t.trim()).filter(Boolean).join(', ');
 }
 
+// Clique no mapa: marca o destino quando a pessoa escolhe o destino (e já tem partida); senão, a partida
 mapa.on('click', (ev) => {
-  definirPartida(ev.latlng, 'mapa');
   limpar(msg);
+  if (tipoDestino === 'ESCOLHIDO' && marcadorPartida) definirDestino(ev.latlng, 'mapa');
+  else definirPartida(ev.latlng, 'mapa');
 });
+
+// Para onde: terreno mais alto (automático) ou um lugar escolhido
+document.querySelectorAll('input[name="tipo-destino"]').forEach((radio) => radio.addEventListener('change', () => {
+  if (!radio.checked) return;
+  tipoDestino = radio.value;
+  const escolhido = tipoDestino === 'ESCOLHIDO';
+  $('bloco-destino').classList.toggle('oculto', !escolhido);
+  if (escolhido) {
+    // a cidade do destino costuma ser a mesma da partida
+    if (!formDestino.cidade.value) formDestino.cidade.value = formBusca.cidade.value;
+    if (!formDestino.estado.value) formDestino.estado.value = formBusca.estado.value;
+    if (marcadorDestino && !mapa.hasLayer(marcadorDestino)) marcadorDestino.addTo(mapa);
+    formDestino.rua.focus();
+  } else if (marcadorDestino) {
+    mapa.removeLayer(marcadorDestino);
+  }
+  if (ultimaRota) {
+    apagarRota();
+    if (!escolhido || marcadorDestino) calcular();
+  }
+}));
 
 $('botao-local').addEventListener('click', () => {
   limpar(msg);
@@ -171,47 +216,55 @@ $('botao-local').addEventListener('click', () => {
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 });
 
-formBusca.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  limpar(msg);
-  const rua = formBusca.rua.value.trim();
-  const cidade = formBusca.cidade.value.trim();
-  const estado = formBusca.estado.value;
-  if (!rua || !cidade || !estado) {
-    mensagem(msg, 'atencao', 'Para buscar, informe o endereço ou o nome do local, a cidade e o estado.');
-    return;
-  }
-  limpar($('b-opcoes'));
-  // "Rua das Flores, 120" → rua e número separados
-  const m = rua.match(/^(.*?)[,\s]+(\d+[A-Za-z]?)\s*$/);
-  const params = { rua: m ? m[1] : rua, numero: m ? m[2] : '', cidade, estado };
-  const botao = $('botao-buscar');
-  botao.disabled = true;
-  try {
-    const r = await api('/api/enderecos/buscar', { params });
-    escolherCandidato(r.candidatos[0]);
-    // Mais de um lugar com esse nome (ex.: "Shopping"): deixa a pessoa escolher o certo
-    const outros = r.candidatos.slice(1).filter((c, i, todos) => todos.findIndex((o) => nomeCurto(o.enderecoEncontrado) === nomeCurto(c.enderecoEncontrado)) === i
-      && nomeCurto(c.enderecoEncontrado) !== nomeCurto(r.candidatos[0].enderecoEncontrado));
-    const opcoes = limpar($('b-opcoes'));
-    if (outros.length) {
-      opcoes.append(el('p', { class: 'dica' }, 'Não é esse lugar? Escolha outro resultado:'),
-        el('ul', { class: 'opcoes-busca' }, outros.map((c) => {
-          const botao = el('button', { type: 'button', class: 'opcao-busca' }, nomeCurto(c.enderecoEncontrado));
-          botao.addEventListener('click', () => {
-            escolherCandidato(c);
-            opcoes.querySelectorAll('.opcao-busca').forEach((b) => b.removeAttribute('aria-current'));
-            botao.setAttribute('aria-current', 'true');
-          });
-          return el('li', {}, botao);
-        })));
+/** Busca de endereço ou local, usada tanto para a partida quanto para o destino. */
+function configurarBusca(form, opcoesEl, aoEscolher) {
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    limpar(msg);
+    const rua = form.rua.value.trim();
+    const cidade = form.cidade.value.trim();
+    const estado = form.estado.value;
+    if (!rua || !cidade || !estado) {
+      mensagem(msg, 'atencao', 'Para buscar, informe o endereço ou o nome do local, a cidade e o estado.');
+      return;
     }
-  } catch (e) {
-    mensagem(msg, 'erro', e.message);
-  } finally {
-    botao.disabled = false;
-  }
-});
+    limpar(opcoesEl);
+    // "Rua das Flores, 120" → rua e número separados
+    const m = rua.match(/^(.*?)[,\s]+(\d+[A-Za-z]?)\s*$/);
+    const params = { rua: m ? m[1] : rua, numero: m ? m[2] : '', cidade, estado };
+    const botao = form.querySelector('button[type="submit"]');
+    botao.disabled = true;
+    try {
+      const r = await api('/api/enderecos/buscar', { params });
+      aoEscolher(r.candidatos[0]);
+      // Mais de um lugar com esse nome (ex.: "Shopping"): deixa a pessoa escolher o certo
+      const primeiro = nomeCurto(r.candidatos[0].enderecoEncontrado);
+      const outros = r.candidatos.slice(1).filter((c, i, todos) => nomeCurto(c.enderecoEncontrado) !== primeiro
+        && todos.findIndex((o) => nomeCurto(o.enderecoEncontrado) === nomeCurto(c.enderecoEncontrado)) === i);
+      if (outros.length) {
+        opcoesEl.append(el('p', { class: 'dica' }, 'Não é esse lugar? Escolha outro resultado:'),
+          el('ul', { class: 'opcoes-busca' }, outros.map((c) => {
+            const opcao = el('button', { type: 'button', class: 'opcao-busca' }, nomeCurto(c.enderecoEncontrado));
+            opcao.addEventListener('click', () => {
+              aoEscolher(c);
+              opcoesEl.querySelectorAll('.opcao-busca').forEach((b) => b.removeAttribute('aria-current'));
+              opcao.setAttribute('aria-current', 'true');
+            });
+            return el('li', {}, opcao);
+          })));
+      }
+    } catch (e) {
+      mensagem(msg, 'erro', e.message);
+    } finally {
+      botao.disabled = false;
+    }
+  });
+}
+
+const formDestino = $('form-destino');
+preencherUfs(formDestino.estado);
+configurarBusca(formBusca, $('b-opcoes'), (c) => escolherCandidato(c, definirPartida));
+configurarBusca(formDestino, $('d-opcoes'), (c) => escolherCandidato(c, definirDestino));
 
 document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => {
   modo = b.dataset.modo;
@@ -221,11 +274,11 @@ document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('clic
 
 botaoCalcular.addEventListener('click', calcular);
 
-function escolherCandidato(c) {
+function escolherCandidato(c, definir) {
   limpar(msg);
   const ll = L.latLng(c.latitude, c.longitude);
   mapa.setView(ll, 17);
-  definirPartida(ll, 'endereco', nomeCurto(c.enderecoEncontrado));
+  definir(ll, 'endereco', nomeCurto(c.enderecoEncontrado));
   if (!c.suficienteParaAnalise) {
     mensagem(msg, 'atencao', 'O lugar foi encontrado só de forma aproximada. Arraste o marcador até o ponto exato.');
   }
@@ -234,14 +287,29 @@ function escolherCandidato(c) {
 // ---------------- Cálculo ----------------
 async function calcular() {
   clearTimeout(temporizadorRecalculo);
-  if (!marcadorPartida) return;
   limpar(msg);
+  if (!marcadorPartida) {
+    mensagem(msg, 'atencao', 'Defina de onde você sai: use sua localização, busque um endereço ou clique no mapa.');
+    return;
+  }
+  const destinoEscolhido = tipoDestino === 'ESCOLHIDO';
+  if (destinoEscolhido && !marcadorDestino) {
+    mensagem(msg, 'atencao', 'Escolha o destino: busque o endereço ou o nome do local, ou clique no mapa.');
+    return;
+  }
   const p = marcadorPartida.getLatLng();
+  const params = { lat: p.lat.toFixed(6), lon: p.lng.toFixed(6), modo };
+  if (destinoEscolhido) {
+    const d = marcadorDestino.getLatLng();
+    params.destLat = d.lat.toFixed(6);
+    params.destLon = d.lng.toFixed(6);
+  }
   botaoCalcular.disabled = true;
   botaoCalcular.textContent = 'Calculando…';
-  mensagem(msg, 'info', 'Analisando a altura do terreno ao redor e as áreas de risco. Pode levar alguns segundos.');
+  mensagem(msg, 'info', destinoEscolhido ? 'Calculando o caminho e conferindo as áreas de risco. Pode levar alguns segundos.'
+    : 'Analisando a altura do terreno ao redor e as áreas de risco. Pode levar alguns segundos.');
   try {
-    const r = await api('/api/rotas/segura', { params: { lat: p.lat.toFixed(6), lon: p.lng.toFixed(6), modo } });
+    const r = await api('/api/rotas/segura', { params });
     ultimaRota = r;
     limpar(msg);
     renderizar(r);
@@ -268,12 +336,12 @@ function renderizar(r) {
     L.polyline(r.trajeto.coordenadas, { color: '#12355b', weight: 5 }).bindTooltip('Caminho sugerido', { sticky: true }).addTo(camadaResultado);
     r.trajeto.coordenadas.forEach((c) => limites.push(c));
   }
-  if (r.destino) {
+  if (r.destino && !r.destino.escolhido) {
     L.marker([r.destino.latitude, r.destino.longitude], { icon: icone('seguro'), title: 'Terreno mais alto', zIndexOffset: 900 })
       .bindPopup(popup('Terreno mais alto', `Cerca de ${Math.round(r.destino.ganhoElevacao)} m acima da partida`, `Altitude aproximada: ${Math.round(r.destino.elevacao)} m`))
       .addTo(camadaResultado);
-    limites.push([r.destino.latitude, r.destino.longitude]);
   }
+  if (r.destino) limites.push([r.destino.latitude, r.destino.longitude]);
   (r.alternativas || []).forEach((a) => {
     L.marker([a.latitude, a.longitude], { icon: icone('alternativa'), title: 'Outro ponto alto próximo' })
       .bindPopup(popup('Outro ponto mais alto', a.elevacao !== null ? `Altitude aproximada: ${Math.round(a.elevacao)} m` : null))
@@ -294,10 +362,13 @@ function renderizar(r) {
   $('r-mensagem').textContent = r.mensagem;
   const medidas = limpar($('r-medidas'));
   if (r.trajeto) {
-    medidas.append(
+    medidas.append(...[
       medida(distancia(r.trajeto.distanciaMetros), 'de caminho'),
       medida(tempo(r.trajeto.duracaoSegundos), r.modo === 'A_PE' ? 'a pé' : 'de carro'),
-      medida('+' + Math.round(r.destino.ganhoElevacao) + ' m', 'de altura em relação à partida'));
+      r.destino.ganhoElevacao === null ? null
+        : Math.abs(r.destino.ganhoElevacao) < 1 ? medida('0 m', 'mesma altura da partida')
+        : medida((r.destino.ganhoElevacao >= 0 ? '+' : '−') + Math.abs(Math.round(r.destino.ganhoElevacao)) + ' m',
+          r.destino.escolhido ? 'de altura do destino em relação à partida' : 'de altura em relação à partida')].filter(Boolean));
   }
   $('r-destino').textContent = r.destino ? r.destino.descricao : '';
 

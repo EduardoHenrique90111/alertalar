@@ -16,14 +16,15 @@ export function criarMapa(elemento, { centro = CENTRO_BRASIL, zoom = 4 } = {}) {
   return mapa;
 }
 
-/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | oficial | relato | agua | seguro | alternativa | usuario */
+/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | destino | oficial | relato | agua | seguro | alternativa | usuario */
 export function icone(tipo) {
-  const tamanho = tipo === 'imovel' ? 30 : tipo === 'seguro' ? 26 : tipo === 'usuario' ? 20 : 18;
+  const pino = tipo === 'imovel' || tipo === 'destino';
+  const tamanho = pino ? 30 : tipo === 'seguro' ? 26 : tipo === 'usuario' ? 20 : 18;
   return L.divIcon({
     className: 'marcador marcador-' + tipo,
     html: '<span></span>',
     iconSize: [tamanho, tamanho],
-    iconAnchor: tipo === 'imovel' ? [tamanho / 2, tamanho] : [tamanho / 2, tamanho / 2],
+    iconAnchor: pino ? [tamanho / 2, tamanho] : [tamanho / 2, tamanho / 2],
     popupAnchor: [0, -tamanho / 2],
   });
 }

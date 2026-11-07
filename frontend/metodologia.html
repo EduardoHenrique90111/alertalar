@@ -98,6 +98,7 @@
       <li><strong>Destino:</strong> a altura do terreno é consultada em cerca de 85 pontos até 3 km da partida (Copernicus DEM GLO-90). Vale um ponto pelo menos 10 m mais alto que a partida (ou 5 m, se não houver) e fora dos setores de risco hidrológico do Serviço Geológico do Brasil. Entre os válidos, o mais próximo.</li>
       <li><strong>Caminho:</strong> calculado sobre as ruas do OpenStreetMap pelo serviço Valhalla, com os setores de risco hidrológico próximos marcados como áreas a evitar. Se não houver caminho que desvie de todos, o resultado avisa.</li>
       <li><strong>Conferência:</strong> o caminho é comparado de novo com os setores de risco e com a altura do terreno. Trechos que passam por setores ou que descem mais de 2 m abaixo da partida aparecem como aviso.</li>
+      <li><strong>Destino escolhido:</strong> a pessoa também pode escolher o destino (endereço, nome do local ou ponto no mapa, até 20 km). O caminho desvia dos setores de risco entre a partida e o destino, e o resultado avisa se o destino fica dentro de um setor ou mais baixo que a partida.</li>
       <li><strong>Limites:</strong> o cálculo não sabe quais ruas estão alagadas ou bloqueadas agora, e a altura do terreno tem erro de alguns metros. Já estar em terreno alto e não haver ponto mais alto por perto também são respostas possíveis.</li>
     </ul>
   </section>

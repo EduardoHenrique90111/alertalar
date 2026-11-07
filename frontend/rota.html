@@ -31,7 +31,7 @@
 
 <main id="conteudo" class="conteiner pagina">
   <h1>Rota segura</h1>
-  <p class="introducao texto-secundario">Caminho a pé ou de carro até um terreno mais alto, fora das áreas de risco de inundação mapeadas pelo Serviço Geológico do Brasil.</p>
+  <p class="introducao texto-secundario">Caminho a pé ou de carro até um terreno mais alto, ou até um lugar que você escolher, desviando das áreas de risco de inundação mapeadas pelo Serviço Geológico do Brasil.</p>
 
   <div class="alerta-emergencia" role="note">
     <strong>Em perigo agora?</strong>
@@ -40,14 +40,14 @@
 
   <div class="grade-rota">
     <section class="painel" aria-labelledby="t-partida">
-      <h2 id="t-partida">Ponto de partida</h2>
+      <h2 id="t-partida" class="passo-titulo"><span class="passo" aria-hidden="true">1</span>De onde você sai</h2>
       <button class="botao botao-largo" type="button" id="botao-local">Usar minha localização</button>
-      <p class="dica">Ou clique no mapa onde você está, ou busque um endereço ou local:</p>
+      <p class="dica">Ou busque um endereço ou local, ou clique no mapa:</p>
       <form id="form-busca" novalidate>
         <div class="campos">
           <div class="campo dois-tercos">
             <label for="b-rua">Endereço ou nome do local</label>
-            <input id="b-rua" name="rua" maxlength="200" autocomplete="address-line1" placeholder="Rua das Flores, 120 ou Canoas Shopping">
+            <input id="b-rua" name="rua" maxlength="200" autocomplete="address-line1" placeholder="Rua das Flores, 120">
           </div>
           <div class="campo terco">
             <label for="b-estado">Estado</label>
@@ -58,30 +58,64 @@
             <input id="b-cidade" name="cidade" maxlength="120" autocomplete="address-level2">
           </div>
         </div>
-        <div class="acoes"><button class="botao botao-secundario botao-pequeno" type="submit" id="botao-buscar">Buscar</button></div>
+        <div class="acoes"><button class="botao botao-secundario botao-pequeno" type="submit" id="botao-buscar">Buscar partida</button></div>
       </form>
       <div id="b-opcoes" aria-live="polite"></div>
+      <p class="partida" id="partida-texto">Ponto de partida ainda não definido.</p>
+
+      <h2 class="passo-titulo" id="t-destino"><span class="passo" aria-hidden="true">2</span>Para onde</h2>
+      <fieldset class="escolha-destino" aria-labelledby="t-destino">
+        <label class="opcao-radio">
+          <input type="radio" name="tipo-destino" value="ALTO" checked>
+          <span><strong>Terreno mais alto mais perto</strong><span class="dica">O AlertaLar escolhe um ponto mais alto, fora das áreas de risco.</span></span>
+        </label>
+        <label class="opcao-radio">
+          <input type="radio" name="tipo-destino" value="ESCOLHIDO">
+          <span><strong>Um lugar que eu escolher</strong><span class="dica">Casa de parente, abrigo, shopping… O caminho desvia das áreas de risco.</span></span>
+        </label>
+      </fieldset>
+      <div id="bloco-destino" class="oculto">
+        <form id="form-destino" novalidate>
+          <div class="campos">
+            <div class="campo dois-tercos">
+              <label for="d-rua">Endereço ou nome do destino</label>
+              <input id="d-rua" name="rua" maxlength="200" placeholder="Canoas Shopping">
+            </div>
+            <div class="campo terco">
+              <label for="d-estado">Estado</label>
+              <select id="d-estado" name="estado"></select>
+            </div>
+            <div class="campo">
+              <label for="d-cidade">Cidade</label>
+              <input id="d-cidade" name="cidade" maxlength="120">
+            </div>
+          </div>
+          <div class="acoes"><button class="botao botao-secundario botao-pequeno" type="submit" id="botao-buscar-destino">Buscar destino</button></div>
+        </form>
+        <div id="d-opcoes" aria-live="polite"></div>
+        <p class="partida" id="destino-texto">Destino ainda não definido. Busque acima ou clique no mapa.</p>
+      </div>
 
       <fieldset class="bloco-curto">
-        <legend class="rotulo">Como você vai se deslocar</legend>
+        <legend class="passo-titulo"><span class="passo" aria-hidden="true">3</span>Como você vai</legend>
         <div class="abas" role="group" aria-label="Modo de deslocamento">
           <button type="button" data-modo="A_PE" aria-pressed="true">A pé</button>
           <button type="button" data-modo="CARRO" aria-pressed="false">De carro</button>
         </div>
       </fieldset>
 
-      <p class="partida" id="partida-texto">Ponto de partida ainda não definido.</p>
       <button class="botao botao-largo" type="button" id="botao-calcular" disabled>Calcular rota segura</button>
       <div id="msg-rota" aria-live="polite"></div>
     </section>
 
     <section aria-labelledby="t-mapa-rota">
       <h2 id="t-mapa-rota" class="sr">Mapa da rota</h2>
-      <div id="mapa-rota" class="mapa mapa-alto" role="application" aria-label="Mapa: clique para marcar o ponto de partida"></div>
+      <div id="mapa-rota" class="mapa mapa-alto" role="application" aria-label="Mapa: clique para marcar o ponto de partida ou o destino"></div>
       <ul class="legenda-mapa">
         <li><i class="l-usuario"></i>Você está aqui</li>
         <li><i class="l-imovel"></i>Partida</li>
         <li><i class="l-seguro"></i>Terreno mais alto</li>
+        <li><i class="l-destino"></i>Destino escolhido</li>
         <li><i class="l-rota"></i>Caminho sugerido</li>
         <li><i class="l-setor"></i>Área de risco (SGB)</li>
         <li><i class="l-relato"></i>Trecho mais baixo</li>

@@ -13,7 +13,8 @@ A pessoa informa um endereço, confirma a posição no mapa e recebe duas respos
   de cada fator, as fontes usadas e a data dos dados. Não muda com o tempo do dia.
 
 A página **Rota segura** sugere um caminho a pé ou de carro, a partir da localização da pessoa
-ou de um endereço, até um terreno mais alto fora das áreas de risco de inundação mapeadas.
+ou de um endereço, até um terreno mais alto fora das áreas de risco de inundação mapeadas, ou
+até um lugar que a pessoa escolher (casa de parente, abrigo), desviando dessas áreas.
 
 ## Objetivo
 
@@ -211,7 +212,7 @@ em português e, em erros de validação, o campo `erros` por campo.
 | POST | `/api/ocorrencias` | público | Envia relato (fica `PENDENTE`) |
 | GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
 | GET | `/api/situacao-atual?lat=&lon=&consulta=` | público | Chuva (72 h passadas e 72 h previstas), vazão e risco agora; `consulta` (opcional, UUID) usa a suscetibilidade daquela consulta |
-| GET | `/api/rotas/segura?lat=&lon=&modo=A_PE` | público | Caminho até terreno mais alto fora de áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
+| GET | `/api/rotas/segura?lat=&lon=&modo=A_PE&destLat=&destLon=` | público | Caminho até o terreno mais alto fora de áreas de risco ou, com `destLat`/`destLon`, até um destino escolhido (até 20 km), desviando das áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
 | POST | `/api/auth/registro` | público | Cria conta e já entra |
 | POST | `/api/auth/login` | público | Entra (sessão) |
 | POST | `/api/auth/logout` | logado | Sai |
