@@ -20,7 +20,7 @@ async function carregar() {
   try {
     const r = await api('/api/consultas/' + encodeURIComponent(id));
     renderizar(r);
-    carregarSituacao(r.endereco.latitude, r.endereco.longitude);
+    carregarSituacao(r.endereco.latitude, r.endereco.longitude, r.id);
   } catch (e) {
     erro(e.status === 404 ? 'Esta consulta não existe ou o link está incompleto.' : e.message);
   }
@@ -34,7 +34,7 @@ function erro(texto) {
 }
 
 function renderizar(r) {
-  document.title = r.rotulo + ': ' + r.endereco.descricao + ' | AlertaLar';
+  document.title = r.endereco.descricao + ' | AlertaLar';
   $('r-endereco').textContent = r.endereco.descricao;
   $('r-meta').textContent = 'Consultado em ' + dataHora(r.dataConsulta) + '. Posição: ' + r.endereco.descricaoPrecisao.toLowerCase() + '.';
   const avisos = $('r-avisos');
@@ -150,12 +150,16 @@ function renderizarOcorrencias(lista, mapa) {
 
 function renderizarHistorico(h) {
   const c = $('r-historico');
+  if (h.municipioIdentificado === false) {
+    c.append(el('p', { class: 'vazio' }, 'Não foi possível identificar o município deste endereço, então o histórico oficial não foi consultado. Confira o nome da cidade e faça uma nova consulta.'));
+    return;
+  }
   if (!h.baseImportada) {
-    c.append(el('p', { class: 'vazio' }, 'Os registros oficiais do S2iD/Atlas Digital ainda não foram importados para este estado no AlertaLar.'));
+    c.append(el('p', { class: 'vazio' }, 'Não há registros oficiais do Atlas Digital/S2iD carregados para este estado no AlertaLar.'));
     return;
   }
   if (h.total === 0) {
-    c.append(el('p', {}, 'Não constam registros oficiais de inundação, enxurrada ou alagamento para o município nos últimos 30 anos na base importada.'));
+    c.append(el('p', {}, 'Não constam registros oficiais de inundação, enxurrada, alagamento ou chuvas intensas para o município nos últimos 30 anos. Isso não significa que nunca houve enchente: depende de a prefeitura ter registrado o evento.'));
     return;
   }
   c.append(el('p', { class: 'texto-secundario' }, `${h.total} registro(s) oficial(is) no município nos últimos 30 anos. São registros municipais: não indicam que este endereço foi atingido.`),
@@ -212,19 +216,21 @@ function renderizarMapa(r) {
     .bindPopup(popup('Imóvel consultado', r.endereco.descricao)).addTo(mapa);
 }
 
-async function carregarSituacao(lat, lon) {
+async function carregarSituacao(lat, lon, consulta) {
   const c = $('r-situacao');
   try {
-    const s = await api('/api/situacao-atual', { params: { lat, lon } });
+    const s = await api('/api/situacao-atual', { params: { lat, lon, consulta } });
+    renderizarAgora(s.riscoAgora, s.consultadoEm);
     limpar(c);
     if (s.chuva.disponivel) {
       c.append(el('h3', {}, 'Chuva no ponto'),
         el('div', { class: 'medidas' },
           medida(s.chuva.ultimas24hMm, 'mm nas últimas 24 horas'),
+          medida(s.chuva.ultimas72hMm, 'mm nas últimas 72 horas'),
           medida(s.chuva.proximas24hMm, 'mm previstos nas próximas 24 horas'),
           medida(s.chuva.proximas72hMm, 'mm previstos em 3 dias'),
-          medida(s.chuva.maiorIntensidadeHorariaProximas24hMm, 'mm na hora mais chuvosa prevista')),
-        el('p', { class: 'dica' }, 'Fonte: ' + s.chuva.fonte + '.'));
+          medida(Math.max(s.chuva.maiorIntensidadeHorariaUltimas24hMm ?? 0, s.chuva.maiorIntensidadeHorariaProximas24hMm ?? 0), 'mm na hora mais chuvosa (24 h antes e depois)')),
+        el('p', { class: 'dica' }, 'Fonte: ' + s.chuva.fonte + '. ' + s.riscoAgora.criterio));
     } else {
       c.append(el('p', { class: 'vazio' }, 'Dados de chuva indisponíveis agora: ' + s.chuva.motivo));
     }
@@ -241,9 +247,20 @@ async function carregarSituacao(lat, lon) {
     }
     c.append(el('ul', {}, s.avisos.map((a) => el('li', {}, a))));
   } catch (e) {
+    renderizarAgora({ nivel: 'INDISPONIVEL', rotulo: 'Indisponível', resumo: 'Não foi possível consultar a chuva agora: ' + e.message, motivos: [] });
     limpar(c);
     c.append(el('p', { class: 'vazio' }, 'Não foi possível consultar a situação atual: ' + e.message));
   }
+}
+
+// Risco agora: chuva do momento combinada com a suscetibilidade do local
+function renderizarAgora(r, consultadoEm) {
+  $('r-agora').dataset.nivel = r.nivel;
+  $('r-agora-rotulo').textContent = r.rotulo;
+  $('r-agora-resumo').textContent = r.resumo + (consultadoEm ? ' Atualizado às ' + dataHora(consultadoEm).split(', ').pop() + '.' : '');
+  const lista = limpar($('r-agora-motivos'));
+  (r.motivos || []).forEach((m) => lista.append(el('li', {}, m)));
+  if (r.proximosDias) lista.append(el('li', {}, el('strong', {}, r.proximosDias)));
 }
 
 function medida(valor, rotulo) {

@@ -8,6 +8,7 @@ import com.alertalar.exception.EnderecoNaoEncontradoException;
 import com.alertalar.exception.IntegracaoExternaException;
 import com.alertalar.exception.PrecisaoInsuficienteException;
 import com.alertalar.integration.ibge.IbgeLocalidadesClient;
+import com.alertalar.integration.ibge.MunicipiosIbge;
 import com.alertalar.integration.nominatim.NominatimClient;
 import com.alertalar.integration.nominatim.NominatimClient.ResultadoGeocodificacao;
 import com.alertalar.integration.viacep.ViaCepClient;
@@ -51,7 +52,7 @@ class EnderecoServiceTest {
 
     @BeforeEach
     void preparar() {
-        servico = new EnderecoService(viaCep, nominatim, ibge, repository, fontes);
+        servico = new EnderecoService(viaCep, nominatim, ibge, MunicipiosIbge.vazio(), repository, fontes);
         lenient().when(repository.save(any(Endereco.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(repository.findByChaveNormalizada(anyString())).thenReturn(Optional.empty());
     }
@@ -139,6 +140,31 @@ class EnderecoServiceTest {
                 .thenReturn(List.of(resultado(30, "100", "Canoas", "RS")));
         when(ibge.codigoMunicipio("RS", "Canoas")).thenThrow(new IntegracaoExternaException("IBGE", "fora do ar"));
         assertNull(servico.resolverParaAnalise(req("100")).getCodigoIbge());
+    }
+
+    @Test
+    @DisplayName("Código IBGE sai da lista guardada no sistema mesmo com a API do IBGE fora do ar")
+    void ibgePelaListaLocal() {
+        EnderecoService comLista = new EnderecoService(viaCep, nominatim, ibge,
+                MunicipiosIbge.de(List.<String[]>of(new String[]{"4304606", "RS", "Canoas"},
+                        new String[]{"4206702", "SC", "Herval D`Oeste"})),
+                repository, fontes);
+        EnderecoRequest manual = new EnderecoRequest(null, "Rua de Teste", "100", null, "canoas", "RS", -29.92, -51.18);
+        assertEquals("4304606", comLista.resolverParaAnalise(manual).getCodigoIbge());
+        EnderecoRequest outraGrafia = new EnderecoRequest(null, "Rua A", "1", null, "Herval d'Oeste", "SC", -27.19, -51.49);
+        assertEquals("4206702", comLista.resolverParaAnalise(outraGrafia).getCodigoIbge());
+        verify(ibge, never()).codigoMunicipio(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Endereço guardado sem código IBGE é completado na consulta seguinte")
+    void completaCodigoDoCache() {
+        Endereco existente = new Endereco();
+        existente.setPrecisao(PrecisaoGeocodificacao.NUMERO);
+        when(repository.findByChaveNormalizada("rua de teste|100|canoas|RS")).thenReturn(Optional.of(existente));
+        when(ibge.codigoMunicipio("RS", "Canoas")).thenReturn(Optional.of("4304606"));
+        assertEquals("4304606", servico.resolverParaAnalise(req("100")).getCodigoIbge());
+        verify(repository).save(existente);
     }
 
     @Test

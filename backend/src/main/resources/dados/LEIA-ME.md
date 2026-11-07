@@ -41,3 +41,19 @@ As chuvas intensas entram porque muitas enchentes são registradas com esse tipo
 - Eventos de 2026 em diante entram importando uma planilha mais nova pela tela de Moderação
   (registros repetidos são ignorados pelo protocolo) ou regenerando este arquivo com uma versão
   mais nova do Atlas e uma nova migration.
+
+# Lista de municípios: `municipios-ibge.csv.gz`
+
+Código IBGE, UF e cada grafia do nome de município que aparece no mesmo arquivo do Atlas (todas as
+tipologias de desastre): 5.307 linhas para 5.256 municípios. Usada por `MunicipiosIbge` para
+achar o código IBGE sem depender da API do IBGE. Os cerca de 300 municípios fora da lista não têm
+nenhum registro no Atlas; para eles o sistema ainda consulta a API do IBGE.
+
+Gerada pela mesma ferramenta, com um terceiro argumento:
+
+```bash
+java -cp target/classes com.alertalar.ferramentas.PrepararBaseAtlas \
+  BD_Atlas_1991_2025_v1.1_2026.08.06_Consolidado.csv \
+  src/main/resources/dados/atlas-desastres-chuva.csv.gz \
+  src/main/resources/dados/municipios-ibge.csv.gz
+```

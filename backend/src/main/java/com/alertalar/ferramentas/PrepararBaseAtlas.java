@@ -56,8 +56,8 @@ public final class PrepararBaseAtlas {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
-            System.err.println("Uso: PrepararBaseAtlas <CSV do Atlas> <saida.csv.gz>");
+        if (args.length < 2 || args.length > 3) {
+            System.err.println("Uso: PrepararBaseAtlas <CSV do Atlas> <saida.csv.gz> [municipios.csv.gz]");
             System.exit(2);
         }
         Resultado r;
@@ -77,14 +77,30 @@ public final class PrepararBaseAtlas {
                 w.write('\n');
             }
         }
+        if (args.length == 3) {
+            Path arquivoMunicipios = Path.of(args[2]);
+            try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(
+                    new GZIPOutputStream(Files.newOutputStream(arquivoMunicipios)), StandardCharsets.UTF_8))) {
+                w.write("codigo;uf;nome\n");
+                for (String[] m : r.municipios()) {
+                    w.write(String.join(";", m));
+                    w.write('\n');
+                }
+            }
+            System.out.printf("Municípios (código e grafias do nome): %d linhas em %s%n", r.municipios().size(), arquivoMunicipios);
+        }
         System.out.printf("Linhas lidas: %d%nRegistros gravados: %d%nIgnorados (outras tipologias): %d%n"
                         + "Descartados (dados inválidos): %d%nPor tipologia: %s%nArquivo: %s (%d bytes)%n",
                 r.lidas(), r.linhas().size(), r.outrasTipologias(), r.invalidos(), r.porTipologia(), saida,
                 Files.size(saida));
     }
 
+    /**
+     * @param municipios código IBGE, UF e cada grafia do nome que aparece no Atlas (todas as
+     *                   tipologias, não só as de chuva), ordenados por código e nome
+     */
     record Resultado(List<String[]> linhas, int lidas, int outrasTipologias, int invalidos,
-                     Map<String, Integer> porTipologia) {
+                     Map<String, Integer> porTipologia, List<String[]> municipios) {
     }
 
     static Resultado converter(InputStream entrada, Charset charset) throws IOException {
@@ -111,6 +127,7 @@ public final class PrepararBaseAtlas {
         }
         List<String[]> saida = new ArrayList<>();
         Map<String, Integer> porTipologia = new TreeMap<>();
+        java.util.TreeSet<String> municipios = new java.util.TreeSet<>();
         int lidas = 0;
         int outras = 0;
         int invalidos = 0;
@@ -121,6 +138,12 @@ public final class PrepararBaseAtlas {
             }
             lidas++;
             List<String> campos = LeitorRegistrosOficiaisCsv.dividir(linha, ';');
+            String codigoMunicipio = campo(campos, pos[3]);
+            String ufMunicipio = campo(campos, pos[1]).toUpperCase();
+            String nomeMunicipio = campo(campos, pos[2]).replace(';', ',');
+            if (codigoMunicipio.matches("\\d{7}") && ufMunicipio.length() == 2 && !nomeMunicipio.isEmpty()) {
+                municipios.add(codigoMunicipio + ";" + ufMunicipio + ";" + nomeMunicipio);
+            }
             String tipologia = campo(campos, pos[6]);
             if (!TIPOLOGIAS.contains(tipologia)) {
                 outras++;
@@ -149,7 +172,8 @@ public final class PrepararBaseAtlas {
         }
         // Ordenado por município e data: comprime melhor e facilita conferências
         saida.sort(Comparator.<String[], String>comparing(r -> r[3]).thenComparing(r -> r[4]).thenComparing(r -> r[0]));
-        return new Resultado(saida, lidas, outras, invalidos, porTipologia);
+        List<String[]> listaMunicipios = municipios.stream().map(m -> m.split(";", 3)).toList();
+        return new Resultado(saida, lidas, outras, invalidos, porTipologia, listaMunicipios);
     }
 
     /**

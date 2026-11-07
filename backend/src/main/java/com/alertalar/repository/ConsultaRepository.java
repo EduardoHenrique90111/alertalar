@@ -14,6 +14,9 @@ public interface ConsultaRepository extends JpaRepository<Consulta, UUID> {
     @EntityGraph(attributePaths = {"endereco"})
     Optional<Consulta> findWithEnderecoById(UUID id);
 
+    @EntityGraph(attributePaths = {"fatores"})
+    Optional<Consulta> findWithFatoresById(UUID id);
+
     @EntityGraph(attributePaths = {"endereco"})
     List<Consulta> findByUsuarioIdOrderByDataConsultaDesc(Long usuarioId, Pageable pageable);
 }

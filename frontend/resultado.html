@@ -43,6 +43,15 @@
       <div class="conteiner">
         <h1 class="endereco" id="r-endereco"></h1>
         <p class="texto-secundario" id="r-meta"></p>
+        <section class="agora" id="r-agora" data-nivel="CARREGANDO" aria-labelledby="t-agora" aria-live="polite">
+          <div class="agora-cabeca">
+            <h2 id="t-agora" class="agora-titulo">Risco agora</h2>
+            <p class="agora-rotulo" id="r-agora-rotulo">Consultando a chuva…</p>
+          </div>
+          <p class="agora-resumo" id="r-agora-resumo">Chuva das últimas horas e prevista para as próximas 24 horas, combinada com a suscetibilidade do local.</p>
+          <ul class="agora-motivos" id="r-agora-motivos"></ul>
+          <p class="agora-pe"><a href="#t-situacao">Ver chuva e rios</a> · <a href="/metodologia.html#t-agora-metodo">Como é calculado</a></p>
+        </section>
         <div id="r-avisos"></div>
       </div>
     </section>
@@ -58,6 +67,7 @@
               <div class="regua-marca" id="r-marca"></div>
             </div>
             <div class="veredito-texto">
+              <p class="sobretitulo">Suscetibilidade do local</p>
               <p class="rotulo-risco" id="r-rotulo"></p>
               <p id="r-resumo"></p>
               <p class="indice" id="r-indice"></p>
@@ -86,7 +96,7 @@
 
       <section class="situacao-atual" aria-labelledby="t-situacao">
         <h2 id="t-situacao">Situação atual</h2>
-        <p class="texto-secundario">Chuva e rios neste momento, estimados por modelos. Estes dados não alteram a classificação acima.</p>
+        <p class="texto-secundario">Chuva e rios neste momento, estimados por modelos. Eles definem o risco agora, mostrado no topo; a suscetibilidade do local não muda com o tempo do dia.</p>
         <div id="r-situacao"><p class="vazio">Consultando dados de chuva e vazão…</p></div>
       </section>
 

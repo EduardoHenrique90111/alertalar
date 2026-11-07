@@ -418,3 +418,23 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 .legenda-mapa .l-seguro { background: var(--verde); border-radius: 50%; width: 0.75rem; height: 0.75rem; }
 .legenda-mapa .l-rota { background: var(--azul-rio); height: 5px; }
 .link-rota { margin-top: var(--e-3); }
+
+/* ---------------- Risco agora (tempo real) ---------------- */
+.agora { margin: var(--e-5) 0 var(--e-4); background: var(--branco); border: 1px solid var(--linha); border-left: 8px solid var(--cinza-claro); border-radius: 0 var(--raio) var(--raio) 0; padding: var(--e-4) var(--e-5); box-shadow: var(--sombra-painel); max-width: 52rem; }
+.agora-cabeca { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--e-2) var(--e-4); }
+.agora-titulo { font-size: var(--t-base); text-transform: uppercase; letter-spacing: 0.06em; color: var(--cinza); margin: 0; }
+.agora-rotulo { font-family: var(--fonte-titulo); font-weight: 800; font-size: var(--t-2); line-height: 1.1; margin: 0; }
+.agora-resumo { margin: var(--e-2) 0; max-width: 60ch; }
+.agora-motivos { margin: 0 0 var(--e-2); padding-left: 1.1rem; font-size: var(--t-pequeno); color: var(--cinza); }
+.agora-motivos:empty { display: none; }
+.agora-pe { font-size: var(--t-pequeno); margin: 0; }
+.agora[data-nivel="BAIXO"] { border-left-color: var(--azul-agua); }
+.agora[data-nivel="BAIXO"] .agora-rotulo { color: var(--azul-agua); }
+.agora[data-nivel="ATENCAO"] { border-left-color: var(--amarelo); background: var(--amarelo-claro); }
+.agora[data-nivel="ATENCAO"] .agora-rotulo { color: #8a6400; }
+.agora[data-nivel="ALTO"] { border-left-color: var(--laranja); background: #fdebdc; }
+.agora[data-nivel="ALTO"] .agora-rotulo { color: #a2460f; }
+.agora[data-nivel="MUITO_ALTO"] { border-left-color: var(--vermelho); background: var(--vermelho-claro); }
+.agora[data-nivel="MUITO_ALTO"] .agora-rotulo { color: #8e231c; }
+.agora[data-nivel="INDISPONIVEL"] .agora-rotulo, .agora[data-nivel="CARREGANDO"] .agora-rotulo { color: var(--cinza); }
+.sobretitulo { font-size: var(--t-pequeno); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--cinza); margin-bottom: var(--e-2); }

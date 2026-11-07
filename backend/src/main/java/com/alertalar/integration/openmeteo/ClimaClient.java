@@ -38,8 +38,8 @@ public class ClimaClient {
         p.put("latitude", String.format(Locale.ROOT, "%.5f", lat));
         p.put("longitude", String.format(Locale.ROOT, "%.5f", lon));
         p.put("hourly", "precipitation");
-        p.put("past_days", 1);
-        p.put("forecast_days", 3);
+        p.put("past_days", 3);
+        p.put("forecast_days", 4);
         p.put("timezone", "auto");
         JsonNode json = http.getJson(FONTE_CHUVA, ClienteHttpExterno.uri(urlPrevisao, p));
         int offsetSeg = json.path("utc_offset_seconds").asInt(0);

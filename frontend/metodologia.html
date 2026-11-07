@@ -39,7 +39,7 @@
       <li><strong>O terreno favorece o acúmulo ou a chegada de água?</strong> Proximidade de rios e córregos e altura do terreno em relação à água e ao entorno.</li>
       <li><strong>Já houve ocorrências?</strong> Registros oficiais do município e relatos de moradores verificados.</li>
     </ul>
-    <p>A <strong>situação atual</strong> (chuva recente, previsão e vazão de rios) é mostrada à parte e não muda a classificação. Ela não é um alerta: para alertas oficiais, cadastre seu CEP enviando um SMS para 40199.</p>
+    <p>Essas três perguntas formam a <strong>suscetibilidade do local</strong>: o quanto ele tende a ser atingido quando chove forte. Ela não muda com o tempo do dia. Por isso o resultado também mostra o <a href="#t-agora-metodo">risco agora</a>, que combina a suscetibilidade com a chuva e os rios deste momento. Nenhum dos dois é alerta oficial: para receber os alertas da Defesa Civil, envie seu CEP por SMS para 40199.</p>
   </section>
 
   <section class="bloco" aria-labelledby="t-fatores">
@@ -66,6 +66,29 @@
       <li>Quando uma fonte não responde ou não tem registro, o fator fica fora da média. A falta de dados nunca é tratada como segurança.</li>
       <li>Baixo risco significa que os dados disponíveis não indicam suscetibilidade elevada. Nenhum local é declarado livre de enchentes.</li>
     </ul>
+  </section>
+
+  <section class="bloco" aria-labelledby="t-agora-metodo">
+    <h2 id="t-agora-metodo">Risco agora</h2>
+    <p>Calculado cada vez que o resultado é aberto, com a chuva estimada por modelos meteorológicos (Open-Meteo) para o ponto: as últimas 72 horas e as próximas 24 horas.</p>
+    <div class="tabela-rolagem">
+      <table>
+        <thead><tr><th scope="col">Nível da chuva</th><th scope="col">Em uma hora</th><th scope="col">Em 24 horas</th><th scope="col">Em 72 horas</th></tr></thead>
+        <tbody>
+          <tr><td>1. Perigo potencial</td><td>20 mm ou mais</td><td>30 mm ou mais</td><td>100 mm ou mais</td></tr>
+          <tr><td>2. Chuva forte</td><td>30 mm ou mais</td><td>50 mm ou mais</td><td>150 mm ou mais</td></tr>
+          <tr><td>3. Chuva muito forte</td><td>mais de 60 mm</td><td>mais de 100 mm</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="dica">Os limites por hora e o de 50 e 100 mm em 24 horas são os que o INMET usa nos avisos de chuvas intensas. O piso de 30 mm em 24 horas e os limites de 72 horas (solo encharcado) foram definidos pelo AlertaLar.</p>
+    <ul class="regras">
+      <li>Sem chuva nesses níveis, o risco agora é <strong>baixo</strong>, mesmo num local de alta suscetibilidade.</li>
+      <li>Com chuva, o risco sobe conforme o local: num local de <strong>baixa</strong> suscetibilidade, fica um nível abaixo do nível da chuva; de suscetibilidade <strong>moderada</strong>, igual ao nível da chuva; de <strong>alta</strong>, um nível acima. Os níveis são baixo, atenção, alto e muito alto.</li>
+      <li>Se o rio mais próximo na grade do modelo GloFAS tiver previsão de subir 50% ou mais em 7 dias e o local ficar perto de água, o risco agora é no mínimo <strong>atenção</strong>.</li>
+      <li>Chuva de 50 mm ou mais prevista entre 24 e 72 horas aparece como aviso para os próximos dias.</li>
+    </ul>
+    <p>Modelos erram a chuva de um bairro, principalmente em temporais isolados. Se estiver chovendo forte onde você está, siga a Defesa Civil mesmo que o nível mostrado seja baixo.</p>
   </section>
 
   <section class="bloco" aria-labelledby="t-rota">

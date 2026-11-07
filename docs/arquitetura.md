@@ -44,8 +44,14 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
      falha vira "indisponível" sem derrubar as outras;
    - cada `FatorRisco` avalia o contexto; `AnaliseRiscoService` consolida;
    - a consulta, os fatores e as geometrias exibidas no mapa são gravados.
-4. `GET /api/consultas/{id}` reabre o resultado; a página chama `GET /api/situacao-atual`
-   separadamente (chuva e vazão, sem efeito na classificação).
+4. `GET /api/consultas/{id}` reabre o resultado; a página chama
+   `GET /api/situacao-atual?consulta={id}`, que mede a chuva e a vazão (15 min em cache por grade
+   de ~1 km) e calcula o **risco agora** (`RiscoAgoraAvaliador`): nível da chuva pelos limites
+   do INMET combinado com a classificação gravada da consulta. A classificação não muda.
+
+O código IBGE do município (para o histórico oficial) vem do ViaCEP, da lista local
+`MunicipiosIbge` ou da API do IBGE, nessa ordem; endereços guardados sem código são completados
+na consulta seguinte.
 
 ## Fluxo da rota segura
 
