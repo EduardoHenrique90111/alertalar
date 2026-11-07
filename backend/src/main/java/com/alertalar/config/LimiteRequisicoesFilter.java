@@ -59,6 +59,9 @@ public class LimiteRequisicoesFilter extends OncePerRequestFilter {
         if (post && (uri.equals("/api/auth/login") || uri.equals("/api/auth/registro"))) {
             return new Regra("auth", limites.autenticacaoPorMinuto(), Duration.ofMinutes(1));
         }
+        if (uri.startsWith("/api/rotas/")) {
+            return new Regra("rota", limites.rotasPorMinuto(), Duration.ofMinutes(1));
+        }
         if (uri.startsWith("/api/situacao-atual")) {
             return new Regra("situacao", 30, Duration.ofMinutes(1));
         }

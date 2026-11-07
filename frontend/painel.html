@@ -19,6 +19,7 @@
     <button class="menu-botao" type="button" aria-expanded="false" aria-controls="menu">Menu</button>
     <nav id="menu" class="menu" aria-label="Principal">
       <a href="/#consultar">Consultar endereço</a>
+      <a href="/rota.html">Rota segura</a>
       <a href="/ocorrencias.html">Ocorrências</a>
       <a href="/relatar.html">Relatar alagamento</a>
       <a href="/metodologia.html">Como analisamos</a>
@@ -51,8 +52,9 @@
 
     <section class="bloco painel" aria-labelledby="t-importar">
       <h2 id="t-importar">Importar registros oficiais (S2iD / Atlas Digital)</h2>
-      <p>Baixe a planilha de registros de desastres no <a href="https://s2id.mi.gov.br" rel="noopener" target="_blank">S2iD</a> ou no <a href="https://atlasdigital.mdr.gov.br" rel="noopener" target="_blank">Atlas Digital de Desastres no Brasil</a>, salve como CSV (no Excel: Arquivo, Salvar como, CSV UTF-8) e envie aqui.</p>
-      <p class="dica">A planilha precisa ter as colunas de UF, município (ou código IBGE), data do evento e COBRADE ou tipo de desastre. Somente inundações, enxurradas e alagamentos são importados; registros repetidos são ignorados.</p>
+      <p>O sistema já vem com a base oficial do Atlas Digital de Desastres no Brasil (v1.1, de 06/08/2026), com os desastres ligados a chuva de todos os municípios de 1991 a 2025. Use esta importação só para incluir registros mais novos.</p>
+      <p>Baixe a planilha de registros de desastres no <a href="https://s2id.mi.gov.br" rel="noopener" target="_blank">S2iD</a> ou no <a href="https://atlasdigital.mdr.gov.br" rel="noopener" target="_blank">Atlas Digital de Desastres no Brasil</a> e envie o arquivo CSV aqui, como foi baixado.</p>
+      <p class="dica">A planilha precisa ter as colunas de UF, município (ou código IBGE), data do evento e COBRADE ou tipo de desastre. São importados inundações, enxurradas, alagamentos e chuvas intensas; registros que já existem são ignorados.</p>
       <form id="form-importar" novalidate>
         <div class="campos">
           <div class="campo">
@@ -78,6 +80,7 @@
         <h2>Navegação</h2>
         <ul>
           <li><a href="/#consultar">Consultar endereço</a></li>
+          <li><a href="/rota.html">Rota segura até terreno mais alto</a></li>
           <li><a href="/ocorrencias.html">Ocorrências registradas</a></li>
           <li><a href="/relatar.html">Relatar um alagamento</a></li>
           <li><a href="/metodologia.html">Metodologia e fontes</a></li>

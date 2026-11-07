@@ -49,10 +49,11 @@ class SegurancaETratamentoDeErrosTest {
     @DisplayName("Regras de limite se aplicam às rotas sensíveis")
     void regrasDeLimite() {
         LimiteRequisicoesFilter filtro = new LimiteRequisicoesFilter(new LimitadorRequisicoes(),
-                new AlertaLarProperties.Limites(15, 10, 10));
+                new AlertaLarProperties.Limites(15, 10, 10, 10));
         assertEquals("consulta", filtro.regraPara("POST", "/api/consultas").grupo());
         assertEquals("relato", filtro.regraPara("POST", "/api/ocorrencias").grupo());
         assertEquals("auth", filtro.regraPara("POST", "/api/auth/login").grupo());
+        assertEquals("rota", filtro.regraPara("GET", "/api/rotas/segura").grupo());
         assertNull(filtro.regraPara("GET", "/api/ocorrencias"));
         assertNull(filtro.regraPara("GET", "/index.html"));
     }

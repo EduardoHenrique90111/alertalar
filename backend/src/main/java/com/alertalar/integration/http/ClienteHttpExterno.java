@@ -66,6 +66,28 @@ public class ClienteHttpExterno {
         }
     }
 
+    /** POST com corpo JSON (o objeto é serializado pelo Jackson) e resposta JSON. */
+    public JsonNode postJson(String fonte, URI uri, Object corpoJson) {
+        String corpoTexto;
+        try {
+            corpoTexto = jsonMapper.writeValueAsString(corpoJson);
+        } catch (JacksonException e) {
+            throw new IllegalArgumentException("Corpo da requisição inválido", e);
+        }
+        try {
+            String corpo = restClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(corpoTexto)
+                    .retrieve()
+                    .body(String.class);
+            return lerJson(fonte, corpo);
+        } catch (RestClientException e) {
+            throw traduzir(fonte, e);
+        }
+    }
+
     private JsonNode lerJson(String fonte, String corpo) {
         if (corpo == null || corpo.isBlank()) {
             throw new IntegracaoExternaException(fonte, "A fonte " + fonte + " retornou uma resposta vazia.");

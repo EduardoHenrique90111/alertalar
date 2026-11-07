@@ -15,15 +15,17 @@ tabela `fonte_dados` e aparece em `GET /api/fontes` e na página "Como analisamo
 | **Serviço Geológico do Brasil – Setorização de Riscos** (ArcGIS REST: `geoportal.sgb.gov.br/server/rest/services/gestaoterritorial/risco/MapServer/0/query`) | Setores de risco alto e muito alto; somente os hidrológicos (inundação, enxurrada, alagamento) pontuam. | Público, oficial | Campos usados: `uf`, `munic`, `num_setor`, `local`, `tipolo_g1..5`, `tipolo_e1..5`, `cobrade_01..05`, `descricao`, `grau_risco`, `data_setor`. O índice da camada (`/0`) é configurável por `SGB_SETORES_RISCO_URL`; se o SGB reorganizar o serviço, ajuste essa variável. O SGB mapeou apenas parte dos municípios. |
 | **Open-Meteo Forecast API** (`api.open-meteo.com/v1/forecast`) | Situação atual: chuva das últimas 24 h e prevista (24 h, 72 h). | Gratuito para uso não comercial | Dados CC BY 4.0. Não altera a classificação. |
 | **GloFAS via Open-Meteo Flood API** (`flood-api.open-meteo.com/v1/flood`) | Situação atual: vazão diária simulada do rio mais próximo (grade de ~5 km). | Gratuito para uso não comercial | Pode não representar rios pequenos. Não altera a classificação. |
+| **Valhalla / OpenStreetMap** (servidor público da FOSSGIS: `valhalla1.openstreetmap.de/route`) | Rota segura: caminho a pé (`pedestrian`) ou de carro (`auto`) até o terreno mais alto, com os setores de risco hidrológico do SGB enviados em `exclude_polygons` e instruções em português. | Gratuito, sem chave | Política da FOSSGIS: no máximo 1 requisição/s, User-Agent identificável, uso moderado e atribuição ao OSM. O AlertaLar espera 1,1 s entre chamadas, limita 10 rotas por minuto por IP, guarda o resultado por 15 min e faz no máximo 4 chamadas por pedido. Para uso intenso, configure `ROTAS_URL` (instância própria ou provedor compatível, com `ROTAS_CHAVE_API`). O total de perímetro dos polígonos evitados é limitado a 9 km (o padrão do Valhalla é 10 km). |
 
-## Importação manual (dados oficiais sem API documentada)
+## Base oficial embutida e importação (dados oficiais sem API documentada)
 
 | Fonte | Como usar |
 |---|---|
-| **S2iD / Atlas Digital de Desastres no Brasil** (MIDR – Defesa Civil Nacional) | Registros oficiais de desastres por município. Não há API pública documentada, então o administrador baixa a planilha em `s2id.mi.gov.br` ou `atlasdigital.mdr.gov.br`, salva como CSV e envia pelo painel de moderação (`POST /api/admin/importacoes/registros-oficiais`). O leitor reconhece variações de colunas (`UF`/`Sigla_UF`, `Município`/`Nome_Municipio`, `Cod_IBGE_Mun`, `Data do Evento`/`Ano`, `COBRADE`/`Desastre`, `Protocolo`) e só importa COBRADE 1.2.1 (inundação), 1.2.2 (enxurrada) e 1.2.3 (alagamento). Registros repetidos são ignorados pelo protocolo. |
+| **Atlas Digital de Desastres no Brasil v1.1** (MIDR/Sedec, 06/08/2026, registros do S2iD) | O sistema já vem com os 27.581 desastres ligados a chuva de todos os municípios de 1991 a 2025: inundações (COBRADE 1.2.1), enxurradas (1.2.2), alagamentos (1.2.3) e chuvas intensas (1.3.2.1.4). A migration `V4__HistoricoOficialAtlas` grava a base no primeiro início. Proveniência, filtro e soma de verificação do arquivo original: `backend/src/main/resources/dados/LEIA-ME.md`. |
+| **S2iD / Atlas Digital** (planilhas mais novas) | Não há API pública documentada. Para eventos posteriores à base embutida, o administrador baixa a planilha em `s2id.mi.gov.br` ou `atlasdigital.mdr.gov.br` e envia o CSV pela Moderação (`POST /api/admin/importacoes/registros-oficiais`). O leitor aceita UTF-8 ou Windows-1252, campos entre aspas com quebra de linha e variações de colunas (`UF`/`Sigla_UF`, `Município`/`Nome_Municipio`, `Cod_IBGE_Mun`, `Data do Evento`/`Data_Evento`/`Ano`, `COBRADE`/`Cod_Cobrade`/`Desastre`, `Protocolo`/`Protocolo_S2iD`). Registros repetidos são ignorados pelo protocolo. |
 
-O sistema **não vem com dados de desastres pré-carregados**: nada é apresentado como oficial
-sem que a planilha oficial tenha sido importada.
+Os registros são municipais: mostram que a cidade foi atingida, não qual rua. A ausência de
+registro não significa que o município nunca teve enchente, só que nada foi registrado no S2iD.
 
 ## Não integradas (estrutura preparada, sem simulação)
 

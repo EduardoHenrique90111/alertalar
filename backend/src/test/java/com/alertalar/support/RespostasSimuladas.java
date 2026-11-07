@@ -1,9 +1,12 @@
 package com.alertalar.support;
 
+import com.alertalar.integration.valhalla.Polyline;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -144,5 +147,28 @@ public final class RespostasSimuladas {
         }
         return "{\"latitude\":-29.92,\"longitude\":-51.18,\"daily_units\":{\"river_discharge\":\"m³/s\"},"
                 + "\"daily\":{\"time\":[" + tempos + "],\"river_discharge\":[" + valores + "]}}";
+    }
+
+    /** Resposta do Valhalla (/route): trajeto em 3 pontos, com o "shape" em polyline de precisão 6. */
+    public static String valhallaRota(double latO, double lonO, double latD, double lonD) {
+        double latM = latO;
+        double lonM = lonD;
+        String shape = Polyline.codificar(List.of(new double[]{latO, lonO}, new double[]{latM, lonM},
+                new double[]{latD, lonD}), 6).replace("\\", "\\\\");
+        return String.format(Locale.ROOT, """
+                {"trip":{"locations":[{"type":"break","lat":%1$.6f,"lon":%2$.6f},{"type":"break","lat":%3$.6f,"lon":%4$.6f}],
+                 "legs":[{"maneuvers":[
+                   {"type":2,"instruction":"Siga a leste na Rua de Teste.","time":120.5,"length":0.150,"begin_shape_index":0,"end_shape_index":1},
+                   {"type":15,"instruction":"Vire à esquerda na Rua do Morro.","time":90.0,"length":0.110,"begin_shape_index":1,"end_shape_index":2},
+                   {"type":4,"instruction":"Você chegou ao seu destino.","time":0.0,"length":0.0,"begin_shape_index":2,"end_shape_index":2}],
+                  "summary":{"length":0.260,"time":210.5},"shape":"%5$s"}],
+                 "summary":{"length":0.260,"time":210.5},"status_message":"Found route between points","status":0,
+                 "units":"kilometers","language":"pt-BR"}}
+                """, latO, lonO, latD, lonD, shape);
+    }
+
+    /** Erro do Valhalla quando não há caminho entre os pontos (HTTP 400). */
+    public static String valhallaSemCaminho() {
+        return "{\"error_code\":442,\"error\":\"No path could be found for input\",\"status_code\":400,\"status\":\"Bad Request\"}";
     }
 }

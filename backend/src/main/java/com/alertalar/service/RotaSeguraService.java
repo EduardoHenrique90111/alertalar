@@ -1,0 +1,444 @@
+package com.alertalar.service;
+
+import com.alertalar.dto.RotaSeguraResponse;
+import com.alertalar.dto.RotaSeguraResponse.Destino;
+import com.alertalar.dto.RotaSeguraResponse.Perfil;
+import com.alertalar.dto.RotaSeguraResponse.Ponto;
+import com.alertalar.dto.RotaSeguraResponse.SetorMapa;
+import com.alertalar.dto.RotaSeguraResponse.Trajeto;
+import com.alertalar.exception.IntegracaoExternaException;
+import com.alertalar.exception.RegraNegocioException;
+import com.alertalar.integration.http.CacheTemporario;
+import com.alertalar.integration.openmeteo.ElevacaoClient;
+import com.alertalar.integration.sgb.SgbSetoresRiscoClient;
+import com.alertalar.integration.sgb.SgbSetoresRiscoClient.SetorRisco;
+import com.alertalar.integration.valhalla.ModoRota;
+import com.alertalar.integration.valhalla.ValhallaClient;
+import com.alertalar.integration.valhalla.ValhallaClient.Rota;
+import com.alertalar.service.analise.Dado;
+import com.alertalar.util.Geo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * Rota segura: encontra, num raio de até 3 km, um ponto de terreno mais alto que o ponto de
+ * partida e fora dos setores de risco hidrológico do SGB, e calcula o caminho até ele pelas
+ * ruas (a pé ou de carro), pedindo ao roteador que evite esses setores.
+ *
+ * <p>Critérios (documentados para o usuário):</p>
+ * <ul>
+ *   <li>destino pelo menos 10 m mais alto que a partida (aceita 5 m quando não há opção melhor);</li>
+ *   <li>destino fora de setores de risco de inundação, enxurrada ou alagamento do SGB;</li>
+ *   <li>entre os candidatos, o mais próximo em linha reta, testando até 3 se o roteador falhar;</li>
+ *   <li>o perfil de elevação do caminho é verificado e trechos baixos geram aviso.</li>
+ * </ul>
+ * É uma sugestão baseada em dados públicos, não uma rota oficial de evacuação.
+ */
+@Service
+public class RotaSeguraService {
+
+    private static final Logger log = LoggerFactory.getLogger(RotaSeguraService.class);
+
+    static final int[] DISTANCIAS_METROS = {250, 500, 800, 1200, 1700, 2300, 3000};
+    static final int RUMOS = 12;
+    static final double DESNIVEL_IDEAL = 10;
+    static final double DESNIVEL_MINIMO = 5;
+    static final int RAIO_VIZINHANCA = 1200;
+    static final int RAIO_SETORES = 3500;
+    /** O Valhalla limita o perímetro total dos polígonos evitados (padrão de 10 km). */
+    static final double PERIMETRO_MAXIMO_EVITAR = 9000;
+    static final int MAX_CHAMADAS_ROTEADOR = 4;
+    static final int MAX_DESTINOS_TESTADOS = 3;
+    static final int AMOSTRAS_PERFIL = 60;
+    static final double TOLERANCIA_TRECHO_BAIXO = 2;
+
+    private final ElevacaoClient elevacao;
+    private final SgbSetoresRiscoClient sgb;
+    private final ValhallaClient roteador;
+    private final FonteDadosService fontes;
+    private final CacheTemporario<String, RotaSeguraResponse> cache = new CacheTemporario<>(Duration.ofMinutes(15), 1_000);
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+    public RotaSeguraService(ElevacaoClient elevacao, SgbSetoresRiscoClient sgb, ValhallaClient roteador,
+                             FonteDadosService fontes) {
+        this.elevacao = elevacao;
+        this.sgb = sgb;
+        this.roteador = roteador;
+        this.fontes = fontes;
+    }
+
+    public RotaSeguraResponse calcular(double lat, double lon, ModoRota modo) {
+        if (!Geo.dentroDoBrasil(lat, lon)) {
+            throw new RegraNegocioException("O ponto de partida precisa estar no território brasileiro.");
+        }
+        String chave = String.format(Locale.ROOT, "%.4f,%.4f,%s", lat, lon, modo);
+        return cache.obterOuCalcular(chave, () -> calcularSemCache(lat, lon, modo));
+    }
+
+    RotaSeguraResponse calcularSemCache(double lat, double lon, ModoRota modo) {
+        List<double[]> grade = gradeDeBusca(lat, lon);
+        CompletableFuture<Dado<List<Double>>> futuroElevacao =
+                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> elevacao.elevacoes(grade)), executor);
+        CompletableFuture<Dado<List<SetorRisco>>> futuroSetores =
+                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> sgb.buscarProximos(lat, lon, RAIO_SETORES)), executor);
+        Dado<List<Double>> elevacoes = futuroElevacao.join();
+        Dado<List<SetorRisco>> setores = futuroSetores.join();
+
+        Montador m = new Montador(modo);
+        List<SetorRisco> hidrologicos = new ArrayList<>();
+        if (setores.disponivel()) {
+            fontes.registrarAcesso("SGB_SETORES_RISCO", setores.obtidoEm());
+            m.fontes.add("Áreas de risco: Serviço Geológico do Brasil (setorização de riscos)");
+            setores.valor().stream().filter(SetorRisco::hidrologico).forEach(hidrologicos::add);
+            hidrologicos.forEach(s -> m.setores.add(new SetorMapa(s.numeroSetor(), s.grauRisco(), s.tipologia(), s.aneis())));
+        } else {
+            m.avisos.add("Não foi possível consultar as áreas de risco do Serviço Geológico do Brasil agora; "
+                    + "o caminho abaixo não desvia delas.");
+        }
+
+        if (!elevacoes.disponivel() || elevacoes.valor().isEmpty() || elevacoes.valor().get(0) == null) {
+            return m.semRota("ROTA_INDISPONIVEL", new Ponto(lat, lon, null),
+                    "Não foi possível obter a altura do terreno agora, então não dá para indicar um local mais alto. "
+                            + "Tente novamente em instantes. Em emergência, ligue 199 (Defesa Civil) ou 193 (Bombeiros).");
+        }
+        fontes.registrarAcesso("COPERNICUS_DEM", elevacoes.obtidoEm());
+        m.fontes.add("Altura do terreno: Copernicus DEM GLO-90 (via Open-Meteo)");
+        double e0 = elevacoes.valor().get(0);
+        Ponto origem = new Ponto(lat, lon, arred(e0));
+
+        SetorRisco setorDaOrigem = setorQueContem(hidrologicos, lat, lon);
+        if (setorDaOrigem != null) {
+            m.avisos.add("O ponto de partida está dentro de uma área de risco de " + tipologia(setorDaOrigem)
+                    + " mapeada pelo SGB" + descricaoSetor(setorDaOrigem) + ". Saia dela o quanto antes.");
+        }
+
+        List<Candidato> candidatos = candidatos(grade, elevacoes.valor(), e0, hidrologicos, lat, lon);
+        if (candidatos.isEmpty()) {
+            Double maisAltoPerto = null;
+            for (int i = 1; i < grade.size(); i++) {
+                Double e = elevacoes.valor().get(i);
+                double[] p = grade.get(i);
+                if (e != null && Geo.distanciaMetros(lat, lon, p[0], p[1]) <= RAIO_VIZINHANCA) {
+                    maisAltoPerto = maisAltoPerto == null ? e : Math.max(maisAltoPerto, e);
+                }
+            }
+            if (maisAltoPerto == null || e0 >= maisAltoPerto - TOLERANCIA_TRECHO_BAIXO) {
+                return m.semRota("JA_EM_TERRENO_ALTO", origem,
+                        "Este ponto já está entre os mais altos da vizinhança: num raio de 1,2 km nenhum ponto analisado "
+                                + "fica mais de 2 m acima dele. Em caso de alagamento, permaneça em local alto e seguro e "
+                                + "siga as orientações da Defesa Civil (199).");
+            }
+            return m.semRota("SEM_TERRENO_ALTO", origem,
+                    "Não encontramos terreno pelo menos 5 m mais alto e fora de áreas de risco num raio de 3 km. "
+                            + "Em emergência, procure o andar mais alto de um prédio sólido próximo e ligue 199 (Defesa Civil).");
+        }
+
+        int chamadas = 0;
+        List<Candidato> testados = new ArrayList<>();
+        for (Candidato c : candidatos) {
+            if (testados.size() >= MAX_DESTINOS_TESTADOS || chamadas >= MAX_CHAMADAS_ROTEADOR) {
+                break;
+            }
+            if (testados.stream().anyMatch(t -> Geo.distanciaMetros(t.lat(), t.lon(), c.lat(), c.lon()) < 200)) {
+                continue; // muito perto de um destino que já falhou
+            }
+            testados.add(c);
+            Evitar evitar = poligonosAEvitar(hidrologicos, lat, lon, c);
+            Rota rota = null;
+            boolean desvioAplicado = true;
+            if (!evitar.aneis().isEmpty()) {
+                chamadas++;
+                rota = tentarRota(lat, lon, c, modo, evitar.aneis());
+            }
+            if (rota == null && chamadas < MAX_CHAMADAS_ROTEADOR) {
+                chamadas++;
+                rota = tentarRota(lat, lon, c, modo, List.of());
+                desvioAplicado = evitar.aneis().isEmpty();
+            }
+            if (rota != null) {
+                fontes.registrarAcesso("VALHALLA_ROTAS", Instant.now());
+                m.fontes.add("Caminho: Valhalla (FOSSGIS) com dados de vias © colaboradores do OpenStreetMap");
+                if (!desvioAplicado) {
+                    m.avisos.add("Não foi possível calcular um caminho que desvie das áreas de risco mapeadas; "
+                            + "o trajeto abaixo pode passar por elas.");
+                } else if (evitar.omitidos() > 0) {
+                    m.avisos.add("Há muitas áreas de risco na região; o desvio considerou as " + evitar.aneis().size()
+                            + " mais próximas do caminho.");
+                }
+                candidatos.stream().filter(o -> o != c).limit(3)
+                        .forEach(o -> m.alternativas.add(new Ponto(o.lat(), o.lon(), arred(o.elevacao()))));
+                return montarComRota(m, origem, e0, c, rota, desvioAplicado, desvioAplicado ? evitar.aneis().size() : 0,
+                        hidrologicos, setorDaOrigem);
+            }
+        }
+        Candidato melhor = candidatos.get(0);
+        m.destino = destino(lat, lon, melhor);
+        return m.semRota("ROTA_INDISPONIVEL", origem,
+                "Há terreno cerca de " + Math.round(melhor.ganho()) + " m mais alto a " + Math.round(melhor.distancia())
+                        + " m a " + Geo.direcao(Geo.rumo(lat, lon, melhor.lat(), melhor.lon()))
+                        + " (marcado no mapa), mas o serviço de rotas não conseguiu traçar o caminho agora. "
+                        + "Tente novamente em instantes ou use o mapa como referência.");
+    }
+
+    private Rota tentarRota(double lat, double lon, Candidato c, ModoRota modo, List<List<double[]>> evitar) {
+        try {
+            return roteador.rota(lat, lon, c.lat(), c.lon(), modo, evitar);
+        } catch (IntegracaoExternaException e) {
+            log.info("Rota até {},{} falhou ({} polígonos evitados): {}", c.lat(), c.lon(), evitar.size(), e.getMessage());
+            return null;
+        }
+    }
+
+    private RotaSeguraResponse montarComRota(Montador m, Ponto origem, double e0, Candidato c, Rota rota,
+                                             boolean desvioAplicado, int setoresEvitados, List<SetorRisco> hidrologicos,
+                                             SetorRisco setorDaOrigem) {
+        m.destino = destino(origem.latitude(), origem.longitude(), c);
+        List<RotaSeguraResponse.Instrucao> instrucoes = rota.instrucoes().stream()
+                .filter(i -> i.texto() != null)
+                .map(i -> new RotaSeguraResponse.Instrucao(i.texto(), Math.round(i.distanciaMetros()), Math.round(i.duracaoSegundos())))
+                .toList();
+        m.trajeto = new Trajeto(Math.round(rota.distanciaMetros()), Math.round(rota.duracaoSegundos()), rota.pontos(),
+                instrucoes, desvioAplicado, setoresEvitados);
+
+        // Setores de risco atravessados pelo caminho (exceto o da própria origem)
+        Set<String> atravessados = new LinkedHashSet<>();
+        for (double[] p : Geo.amostrar(rota.pontos(), Math.min(200, Math.max(20, rota.pontos().size())))) {
+            SetorRisco s = setorQueContem(hidrologicos, p[0], p[1]);
+            if (s != null && s != setorDaOrigem) {
+                atravessados.add(s.numeroSetor() == null ? "sem número" : s.numeroSetor());
+            }
+        }
+        if (!atravessados.isEmpty()) {
+            m.avisos.add("O caminho passa por dentro de área de risco mapeada pelo SGB (setor " + String.join(", ", atravessados)
+                    + "). Atenção redobrada nesse trecho e não atravesse se houver água.");
+        }
+
+        // Perfil de elevação do caminho
+        List<double[]> amostras = Geo.amostrar(rota.pontos(), AMOSTRAS_PERFIL);
+        Dado<List<Double>> elevPerfil = Dado.coletar(() -> elevacao.elevacoes(amostras.stream().map(a -> new double[]{a[0], a[1]}).toList()));
+        if (elevPerfil.disponivel()) {
+            List<double[]> perfil = new ArrayList<>();
+            double min = Double.MAX_VALUE;
+            double max = -Double.MAX_VALUE;
+            double[] pontoMin = null;
+            double distMin = 0;
+            for (int i = 0; i < amostras.size(); i++) {
+                Double e = elevPerfil.valor().get(i);
+                if (e == null) {
+                    continue;
+                }
+                perfil.add(new double[]{Math.round(amostras.get(i)[2]), arred(e)});
+                if (e < min) {
+                    min = e;
+                    pontoMin = new double[]{amostras.get(i)[0], amostras.get(i)[1]};
+                    distMin = amostras.get(i)[2];
+                }
+                max = Math.max(max, e);
+            }
+            if (pontoMin != null) {
+                m.perfil = new Perfil(arred(min), arred(max), Math.round(distMin), pontoMin, perfil);
+                if (min < e0 - TOLERANCIA_TRECHO_BAIXO && distMin > 50) {
+                    m.avisos.add("Atenção: a cerca de " + Math.round(distMin) + " m do início, o caminho passa por um trecho "
+                            + Math.round(e0 - min) + " m mais baixo que o ponto de partida (marcado no mapa). Se esse trecho "
+                            + "estiver alagado, não atravesse: procure outro caminho ou um andar alto de um prédio próximo.");
+                }
+            }
+        }
+
+        String tempo = formatarTempo(rota.duracaoSegundos());
+        String mensagem = "Siga por " + formatarDistancia(rota.distanciaMetros()) + " (cerca de " + tempo + " "
+                + (m.modo == ModoRota.A_PE ? "a pé" : "de carro") + ") até um terreno cerca de " + Math.round(c.ganho())
+                + " m mais alto que o ponto de partida.";
+        return m.comRota(origem, mensagem);
+    }
+
+    // ------------------------------------------------------------------ busca de destino
+
+    static List<double[]> gradeDeBusca(double lat, double lon) {
+        List<double[]> grade = new ArrayList<>();
+        grade.add(new double[]{lat, lon});
+        for (int a = 0; a < DISTANCIAS_METROS.length; a++) {
+            double defasagem = (a % 2 == 1) ? 360.0 / RUMOS / 2 : 0; // anéis alternados para cobrir melhor
+            for (int r = 0; r < RUMOS; r++) {
+                grade.add(Geo.deslocar(lat, lon, DISTANCIAS_METROS[a], r * 360.0 / RUMOS + defasagem));
+            }
+        }
+        return grade;
+    }
+
+    /** Candidatos a destino ordenados: primeiro os 10 m+ mais altos, depois os 5 m+, cada grupo do mais perto ao mais longe. */
+    static List<Candidato> candidatos(List<double[]> grade, List<Double> elevacoes, double e0, List<SetorRisco> hidrologicos,
+                                      double lat, double lon) {
+        List<Candidato> lista = new ArrayList<>();
+        for (int i = 1; i < grade.size() && i < elevacoes.size(); i++) {
+            Double e = elevacoes.get(i);
+            if (e == null) {
+                continue;
+            }
+            double ganho = e - e0;
+            double[] p = grade.get(i);
+            if (ganho < DESNIVEL_MINIMO || setorQueContem(hidrologicos, p[0], p[1]) != null) {
+                continue;
+            }
+            lista.add(new Candidato(p[0], p[1], e, ganho, Geo.distanciaMetros(lat, lon, p[0], p[1])));
+        }
+        lista.sort(Comparator.comparing((Candidato c) -> c.ganho() >= DESNIVEL_IDEAL ? 0 : 1)
+                .thenComparingDouble(Candidato::distancia)
+                .thenComparing(Comparator.comparingDouble(Candidato::ganho).reversed()));
+        return lista;
+    }
+
+    record Candidato(double lat, double lon, double elevacao, double ganho, double distancia) {
+    }
+
+    record Evitar(List<List<double[]>> aneis, int omitidos) {
+    }
+
+    /**
+     * Setores a evitar: todos os hidrológicos que não contêm a origem nem o destino, dos mais próximos
+     * do trajeto em linha reta para os mais distantes, até o limite de perímetro aceito pelo roteador.
+     */
+    static Evitar poligonosAEvitar(List<SetorRisco> hidrologicos, double lat, double lon, Candidato destino) {
+        record Anel(List<double[]> pontos, double distancia, double perimetro) {
+        }
+        List<double[]> segmento = List.of(new double[]{lat, lon}, new double[]{destino.lat(), destino.lon()});
+        List<Anel> aneis = new ArrayList<>();
+        for (SetorRisco s : hidrologicos) {
+            boolean contemExtremo = false;
+            for (List<double[]> anel : s.aneis()) {
+                if (Geo.dentroDoPoligono(lat, lon, anel) || Geo.dentroDoPoligono(destino.lat(), destino.lon(), anel)) {
+                    contemExtremo = true;
+                }
+            }
+            if (contemExtremo) {
+                continue;
+            }
+            for (List<double[]> anel : s.aneis()) {
+                double[] centro = centroide(anel);
+                double[] maisPerto = Geo.pontoMaisProximo(centro[0], centro[1], segmento);
+                List<double[]> fechado = new ArrayList<>(anel);
+                if (!java.util.Arrays.equals(fechado.get(0), fechado.get(fechado.size() - 1))) {
+                    fechado.add(fechado.get(0));
+                }
+                aneis.add(new Anel(anel, maisPerto == null ? Double.MAX_VALUE : maisPerto[2], Geo.comprimento(fechado)));
+            }
+        }
+        aneis.sort(Comparator.comparingDouble(Anel::distancia));
+        List<List<double[]>> escolhidos = new ArrayList<>();
+        double total = 0;
+        int omitidos = 0;
+        for (Anel a : aneis) {
+            if (total + a.perimetro() <= PERIMETRO_MAXIMO_EVITAR) {
+                escolhidos.add(a.pontos());
+                total += a.perimetro();
+            } else {
+                omitidos++;
+            }
+        }
+        return new Evitar(escolhidos, omitidos);
+    }
+
+    static SetorRisco setorQueContem(List<SetorRisco> setores, double lat, double lon) {
+        for (SetorRisco s : setores) {
+            for (List<double[]> anel : s.aneis()) {
+                if (Geo.dentroDoPoligono(lat, lon, anel)) {
+                    return s;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static double[] centroide(List<double[]> anel) {
+        double la = 0;
+        double lo = 0;
+        for (double[] p : anel) {
+            la += p[0];
+            lo += p[1];
+        }
+        return new double[]{la / anel.size(), lo / anel.size()};
+    }
+
+    private static Destino destino(double lat, double lon, Candidato c) {
+        String descricao = "Terreno cerca de " + Math.round(c.ganho()) + " m mais alto que o ponto de partida, a "
+                + Math.round(c.distancia()) + " m a " + Geo.direcao(Geo.rumo(lat, lon, c.lat(), c.lon())) + " em linha reta, "
+                + "fora das áreas de risco mapeadas.";
+        return new Destino(c.lat(), c.lon(), arred(c.elevacao()), arred(c.ganho()), Math.round(c.distancia()), descricao);
+    }
+
+    private static String tipologia(SetorRisco s) {
+        return s.tipologia() == null ? "inundação" : s.tipologia().toLowerCase(Locale.ROOT);
+    }
+
+    private static String descricaoSetor(SetorRisco s) {
+        List<String> partes = new ArrayList<>();
+        if (s.numeroSetor() != null) partes.add("setor " + s.numeroSetor());
+        if (s.grauRisco() != null) partes.add("grau " + s.grauRisco().toLowerCase(Locale.ROOT));
+        return partes.isEmpty() ? "" : " (" + String.join(", ", partes) + ")";
+    }
+
+    static String formatarDistancia(double metros) {
+        if (metros < 1000) {
+            return Math.round(metros / 10.0) * 10 + " m";
+        }
+        return String.format(Locale.of("pt", "BR"), "%.1f km", metros / 1000);
+    }
+
+    static String formatarTempo(double segundos) {
+        long min = Math.max(1, Math.round(segundos / 60));
+        return min < 60 ? min + " min" : (min / 60) + " h " + (min % 60) + " min";
+    }
+
+    private static double arred(double v) {
+        return Math.round(v * 10) / 10.0;
+    }
+
+    /** Acumula as partes da resposta. */
+    private static final class Montador {
+        final ModoRota modo;
+        final List<String> avisos = new ArrayList<>();
+        final List<String> fontes = new ArrayList<>();
+        final List<SetorMapa> setores = new ArrayList<>();
+        final List<Ponto> alternativas = new ArrayList<>();
+        Destino destino;
+        Trajeto trajeto;
+        Perfil perfil;
+
+        Montador(ModoRota modo) {
+            this.modo = modo;
+        }
+
+        private List<String> avisosFinais() {
+            List<String> lista = new ArrayList<>(avisos);
+            lista.add("Esta é uma sugestão calculada automaticamente com dados públicos, não uma rota oficial de evacuação: "
+                    + "a altura do terreno tem margem de erro de alguns metros e as ruas podem estar alagadas ou bloqueadas.");
+            lista.add("Nunca atravesse ruas alagadas, a pé ou de carro. Siga sempre as orientações da Defesa Civil (199) "
+                    + "e dos Bombeiros (193).");
+            return lista;
+        }
+
+        RotaSeguraResponse semRota(String status, Ponto origem, String mensagem) {
+            return new RotaSeguraResponse(status, mensagem, modo.name(), modo.getRotulo(), origem, destino, null, null,
+                    setores, alternativas, avisosFinais(), List.copyOf(new LinkedHashSet<>(fontes)), Instant.now());
+        }
+
+        RotaSeguraResponse comRota(Ponto origem, String mensagem) {
+            return new RotaSeguraResponse("ROTA_ENCONTRADA", mensagem, modo.name(), modo.getRotulo(), origem, destino,
+                    trajeto, perfil, setores, alternativas, avisosFinais(), List.copyOf(new LinkedHashSet<>(fontes)),
+                    Instant.now());
+        }
+    }
+}

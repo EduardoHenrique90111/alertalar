@@ -76,6 +76,7 @@ function renderizar(r) {
 
   const rel = new URLSearchParams({ lat: r.endereco.latitude, lon: r.endereco.longitude, municipio: r.endereco.cidade, estado: r.endereco.estado });
   $('link-relatar').href = '/relatar.html?' + rel.toString();
+  $('link-rota').href = '/rota.html?' + new URLSearchParams({ lat: r.endereco.latitude, lon: r.endereco.longitude }).toString();
   $('botao-copiar').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(location.href);

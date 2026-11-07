@@ -5,6 +5,7 @@ public enum TipoEvento {
     ALAGAMENTO("Alagamento"),
     INUNDACAO("Inundação"),
     ENXURRADA("Enxurrada"),
+    CHUVA_INTENSA("Chuvas intensas"),
     OUTRO("Outro evento relacionado a chuvas");
 
     private final String rotulo;
