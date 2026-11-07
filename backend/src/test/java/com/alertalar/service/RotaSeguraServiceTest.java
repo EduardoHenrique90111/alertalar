@@ -278,6 +278,65 @@ class RotaSeguraServiceTest {
     }
 
     @Test
+    @DisplayName("Destino escolhido: caminho até ele, desviando de áreas de risco no meio do trajeto")
+    void destinoEscolhido() {
+        double[] destino = Geo.deslocar(LAT, LON, 2000, 30);
+        double[] meio = Geo.deslocar(LAT, LON, 1000, 30);
+        when(elevacao.elevacoes(anyList())).thenAnswer(inv -> {
+            List<double[]> pontos = inv.getArgument(0);
+            return pontos.size() == 2 ? List.of(8.0, 15.0) : pontos.stream().map(p -> 10.0).toList();
+        });
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of(setor("H1", meio[0], meio[1], 80, true)));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+
+        RotaSeguraResponse r = service.calcularAte(LAT, LON, destino[0], destino[1], ModoRota.A_PE);
+
+        assertEquals("ROTA_ENCONTRADA", r.status());
+        assertTrue(r.destino().escolhido());
+        assertEquals(7.0, r.destino().ganhoElevacao(), 1e-9);
+        assertEquals(2000, r.destino().distanciaRetaMetros(), 3);
+        assertTrue(r.destino().descricao().contains("7 m mais alto"), r.destino().descricao());
+        assertTrue(r.mensagem().endsWith("até o destino escolhido."), r.mensagem());
+        assertTrue(r.alternativas().isEmpty());
+        assertEquals(1, r.trajeto().setoresEvitados());
+        verify(roteador).rota(eq(LAT), eq(LON), eq(destino[0]), eq(destino[1]), eq(ModoRota.A_PE), argThat(l -> l.size() == 1));
+        verify(sgb).buscarProximos(anyDouble(), anyDouble(), eq(2500));
+    }
+
+    @Test
+    @DisplayName("Destino escolhido dentro de área de risco ou mais baixo que a partida gera aviso")
+    void destinoEscolhidoArriscado() {
+        double[] destino = Geo.deslocar(LAT, LON, 800, 90);
+        when(elevacao.elevacoes(anyList())).thenAnswer(inv -> {
+            List<double[]> pontos = inv.getArgument(0);
+            return pontos.size() == 2 ? List.of(12.0, 4.0) : pontos.stream().map(p -> 8.0).toList();
+        });
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of(setor("H7", destino[0], destino[1], 100, true)));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+
+        RotaSeguraResponse r = service.calcularAte(LAT, LON, destino[0], destino[1], ModoRota.CARRO);
+
+        assertEquals("ROTA_ENCONTRADA", r.status());
+        assertTrue(r.avisos().stream().anyMatch(a -> a.contains("O destino escolhido fica dentro de uma área de risco") && a.contains("H7")));
+        assertTrue(r.avisos().stream().anyMatch(a -> a.contains("8 m mais baixo que o ponto de partida")));
+        assertTrue(r.avisos().stream().noneMatch(a -> a.contains("O caminho passa por dentro")), "setor do destino já foi avisado");
+        assertEquals(-8.0, r.destino().ganhoElevacao(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("Destino escolhido longe demais, no mesmo lugar ou fora do Brasil é recusado")
+    void destinoEscolhidoInvalido() {
+        double[] longe = Geo.deslocar(LAT, LON, 25_000, 0);
+        RegraNegocioException e = assertThrows(RegraNegocioException.class,
+                () -> service.calcularAte(LAT, LON, longe[0], longe[1], ModoRota.CARRO));
+        assertTrue(e.getMessage().contains("até 20 km"), e.getMessage());
+        assertThrows(RegraNegocioException.class, () -> service.calcularAte(LAT, LON, LAT + 0.0001, LON, ModoRota.A_PE));
+        assertThrows(RegraNegocioException.class, () -> service.calcularAte(LAT, LON, 40.7, -74.0, ModoRota.A_PE));
+    }
+
+    @Test
     @DisplayName("Ponto fora do Brasil é recusado; distâncias e tempos em português")
     void validacaoEFormatos() {
         assertThrows(RegraNegocioException.class, () -> service.calcular(40.7, -74.0, ModoRota.A_PE));

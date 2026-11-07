@@ -322,6 +322,16 @@ class AlertaLarIntegracaoTest {
         assertTrue(textoContem(r.path("avisos"), "193"));
         assertEquals(1, apis.contar("/valhalla/route"));
 
+        assertFalse(r.path("destino").path("escolhido").asBoolean());
+
+        JsonNode escolhido = c.getJson("/api/rotas/segura?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON
+                + "&modo=CARRO&destLat=-29.9100&destLon=-51.1700");
+        assertEquals("ROTA_ENCONTRADA", escolhido.path("status").asString(), escolhido.toString());
+        assertTrue(escolhido.path("destino").path("escolhido").asBoolean());
+        assertEquals(-29.91, escolhido.path("destino").path("latitude").asDouble(), 1e-9);
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.92&lon=-51.18&destLat=-29.91", null, false).statusCode(),
+                "destino incompleto");
+
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=40.7&lon=-74.0", null, false).statusCode(), "fora do Brasil");
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9&lon=-51.1&modo=AVIAO", null, false).statusCode());
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9", null, false).statusCode());
