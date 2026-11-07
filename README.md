@@ -7,6 +7,9 @@ A pessoa informa um endereço, confirma a posição no mapa e recebe uma classif
 de cada fator, as fontes usadas e a data dos dados. A situação atual (chuva e rios) aparece à
 parte e não altera a classificação.
 
+A página **Rota segura** sugere um caminho a pé ou de carro, a partir da localização da pessoa
+ou de um endereço, até um terreno mais alto fora das áreas de risco de inundação mapeadas.
+
 ## Objetivo
 
 Ajudar moradores, compradores e inquilinos a saber se um endereço fica em região historicamente
@@ -14,7 +17,8 @@ afetada por enchentes ou geograficamente suscetível a alagamentos, sempre separ
 
 - **risco mapeado**: setores de risco oficiais do Serviço Geológico do Brasil;
 - **suscetibilidade geográfica**: proximidade de rios e córregos e altura relativa do terreno;
-- **risco histórico**: registros oficiais do município e relatos de moradores verificados;
+- **risco histórico**: desastres oficiais do município (inundações, enxurradas, alagamentos e
+  chuvas intensas registrados no S2iD, de 1991 a 2025, já incluídos) e relatos de moradores verificados;
 - **situação atual**: chuva e vazão de rios estimadas por modelos (apenas informativo).
 
 O sistema nunca afirma que um local está livre de enchentes e não inventa dados: quando uma
@@ -28,7 +32,7 @@ fonte não responde ou não cobre a região, o fator aparece como indisponível 
 | Banco de dados | PostgreSQL, Hibernate/JPA, Flyway (migrations) |
 | Front-end | HTML5, CSS3, JavaScript puro (módulos ES), Leaflet 1.9.4 + OpenStreetMap |
 | Testes | JUnit 5/6 (Jupiter) e Mockito |
-| Integrações | ViaCEP, Nominatim (OSM), IBGE Localidades, Overpass (OSM), Open-Meteo (elevação Copernicus, chuva, vazão GloFAS), SGB (setores de risco); importação de planilhas do S2iD/Atlas Digital |
+| Integrações | ViaCEP, Nominatim (OSM), IBGE Localidades, Overpass (OSM), Open-Meteo (elevação Copernicus, chuva, vazão GloFAS), SGB (setores de risco), Valhalla (rotas sobre o OSM); base do Atlas Digital de Desastres embutida e importação de planilhas do S2iD |
 
 Fontes tipográficas (Overpass e Public Sans, licença OFL) e Leaflet ficam dentro do projeto:
 o front-end não depende de CDN.
@@ -68,6 +72,7 @@ Edite o `.env` (ele fica fora do Git):
 | `ALERTALAR_CONTATO_EMAIL` | Contato enviado às APIs públicas (pedido pela política do Nominatim) |
 | `PORT` | Porta HTTP (padrão 8080) |
 | `COOKIE_SECURE`, `FORWARD_HEADERS_STRATEGY` | Use `true` e `framework` quando publicar com HTTPS atrás de proxy |
+| `ROTAS_URL`, `ROTAS_CHAVE_API` | Opcional. Servidor de rotas compatível com o Valhalla (padrão: servidor público da FOSSGIS, sem chave) |
 
 O back-end lê o `.env` da raiz do projeto ou da pasta `backend`. Variáveis de ambiente do
 sistema operacional têm prioridade sobre ele.
@@ -75,6 +80,10 @@ sistema operacional têm prioridade sobre ele.
 ### 3. APIs externas
 
 Nenhuma chave é necessária: todas as integrações ativas usam serviços públicos gratuitos.
+A rota segura usa o servidor público do Valhalla mantido pela FOSSGIS
+(`valhalla1.openstreetmap.de`), que aceita no máximo uma requisição por segundo; o AlertaLar
+respeita esse intervalo e limita cada visitante a 10 rotas por minuto. Para uso intenso, aponte
+`ROTAS_URL` para uma instância própria ou um provedor compatível (com `ROTAS_CHAVE_API`).
 Os endereços podem ser trocados por variáveis (`NOMINATIM_URL`, `OVERPASS_URL` etc., veja o
 `.env.example`), por exemplo para usar uma instância própria do Nominatim. Detalhes, limites
 de uso e situação de cada fonte: [docs/fontes-de-dados.md](docs/fontes-de-dados.md).
@@ -112,11 +121,38 @@ o navegador após editar). No `mvn package`, o front-end é copiado para dentro 
 
 ### Primeiros passos
 
-1. Consulte um endereço na página inicial.
-2. Entre com o administrador configurado no `.env` e abra **Moderação**.
-3. Para ativar o histórico oficial municipal, baixe a planilha de desastres no
-   [S2iD](https://s2id.mi.gov.br) ou no [Atlas Digital](https://atlasdigital.mdr.gov.br), salve
-   como CSV e importe pela Moderação.
+1. Consulte um endereço na página inicial. Na primeira inicialização, o Flyway já carrega o
+   histórico oficial de todos os municípios (veja abaixo); não é preciso importar nada.
+2. Abra **Rota segura** para testar o caminho até um terreno mais alto.
+3. Entre com o administrador configurado no `.env` e abra **Moderação** para validar relatos.
+
+### Histórico oficial embutido
+
+O arquivo `backend/src/main/resources/dados/atlas-desastres-chuva.csv.gz` traz 27.581 registros
+de desastres ligados a chuva (inundações, enxurradas, alagamentos e chuvas intensas, de 1991 a
+2025) de todos os municípios, extraídos do **Atlas Digital de Desastres no Brasil v1.1**
+(MIDR/Sedec, 06/08/2026), que consolida os registros do S2iD. A migration Java
+`V4__HistoricoOficialAtlas` grava esses registros no banco uma única vez.
+
+As chuvas intensas (COBRADE 1.3.2.1.4) entram porque muitas enchentes são registradas com esse
+tipo: as de maio de 2024 em Canoas e Porto Alegre, por exemplo.
+
+Para incluir eventos mais novos, há dois caminhos:
+
+- importar a planilha CSV do [S2iD](https://s2id.mi.gov.br) ou do
+  [Atlas Digital](https://atlasdigital.mdr.gov.br) pela **Moderação** (registros repetidos são
+  ignorados pelo número de protocolo);
+- ou regenerar a base embutida a partir do CSV completo do Atlas e criar uma nova migration:
+
+```bash
+cd backend
+mvn -q compile
+java -cp target/classes com.alertalar.ferramentas.PrepararBaseAtlas \
+  ~/Downloads/BD_Atlas_1991_2025_v1.1_2026.08.06_Consolidado.csv \
+  src/main/resources/dados/atlas-desastres-chuva.csv.gz
+```
+
+Proveniência e filtro: [backend/src/main/resources/dados/LEIA-ME.md](backend/src/main/resources/dados/LEIA-ME.md).
 
 ## Testes
 
@@ -125,14 +161,15 @@ cd backend
 mvn test
 ```
 
-Há 99 testes (JUnit + Mockito): validação de endereços, geocodificação, fatores e classificação
+Há 122 testes (JUnit + Mockito): validação de endereços, geocodificação, fatores e classificação
 de risco, processamento da consulta, registro e moderação de ocorrências, importação de
-planilhas, tratamento de erros, segurança e comunicação HTTP com as APIs externas (contra um
-servidor local que responde no mesmo formato das APIs reais).
+planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
+perfil de altura), tratamento de erros, segurança e comunicação HTTP com as APIs externas
+(contra um servidor local que responde no mesmo formato das APIs reais).
 
 O teste de **ponta a ponta** (`AlertaLarIntegracaoTest`) sobe a aplicação inteira com
 PostgreSQL real e percorre consulta, persistência, relato, moderação, importação, situação
-atual, cadastro e login. Ele só roda quando existe a variável `ALERTALAR_TEST_DB_URL`
+atual, rota segura, cadastro e login. Ele só roda quando existe a variável `ALERTALAR_TEST_DB_URL`
 apontando para um banco **exclusivo de testes** (os dados dele são apagados):
 
 ```bash
@@ -168,6 +205,7 @@ em português e, em erros de validação, o campo `erros` por campo.
 | POST | `/api/ocorrencias` | público | Envia relato (fica `PENDENTE`) |
 | GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
 | GET | `/api/situacao-atual?lat=&lon=` | público | Chuva e vazão atuais (não altera a classificação) |
+| GET | `/api/rotas/segura?lat=&lon=&modo=A_PE` | público | Caminho até terreno mais alto fora de áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
 | POST | `/api/auth/registro` | público | Cria conta e já entra |
 | POST | `/api/auth/login` | público | Entra (sessão) |
 | POST | `/api/auth/logout` | logado | Sai |
@@ -271,8 +309,12 @@ Observações:
   não aparecer.
 - O SGB mapeou setores de risco em parte dos municípios; a ausência de setor não é tratada como
   segurança.
-- Registros do S2iD são municipais (não indicam a rua) e dependem de importação manual da
-  planilha, pois não há API pública documentada. A importação aceita CSV (não XLSX).
+- Registros do S2iD são municipais (não indicam a rua). A base embutida vai até 2025; eventos
+  mais novos dependem de importar a planilha, pois não há API pública documentada. A importação
+  aceita CSV (não XLSX). A ausência de registro não significa que o município nunca teve enchente.
+- A rota segura não é rota oficial de evacuação: não sabe quais ruas estão alagadas ou
+  bloqueadas, a altura do terreno tem erro de alguns metros e o desvio cobre só os setores
+  mapeados pelo SGB. O servidor público de rotas pode recusar pedidos em horários de muito uso.
 - CEMADEN, INMET e ANA ainda não estão integrados (acesso exige credencial ou não há API
   documentada); estão registrados como fontes planejadas.
 - O índice da camada do SGB (`/MapServer/0`) segue o serviço público atual; se o SGB mudar o

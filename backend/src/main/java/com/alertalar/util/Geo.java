@@ -102,6 +102,67 @@ public final class Geo {
         return new double[]{Math.toDegrees(lat2), Math.toDegrees(lon2)};
     }
 
+    /** Rumo inicial (graus a partir do norte, 0–360) de um ponto a outro. */
+    public static double rumo(double lat1, double lon1, double lat2, double lon2) {
+        double f1 = Math.toRadians(lat1);
+        double f2 = Math.toRadians(lat2);
+        double dl = Math.toRadians(lon2 - lon1);
+        double y = Math.sin(dl) * Math.cos(f2);
+        double x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    /** "norte", "nordeste", "leste"... para um rumo em graus. */
+    public static String direcao(double rumoGraus) {
+        String[] nomes = {"norte", "nordeste", "leste", "sudeste", "sul", "sudoeste", "oeste", "noroeste"};
+        return nomes[(int) Math.round(((rumoGraus % 360) + 360) % 360 / 45.0) % 8];
+    }
+
+    /** Comprimento (m) de uma linha de pontos [lat, lon]. */
+    public static double comprimento(List<double[]> linha) {
+        double total = 0;
+        for (int i = 1; i < linha.size(); i++) {
+            total += distanciaMetros(linha.get(i - 1)[0], linha.get(i - 1)[1], linha.get(i)[0], linha.get(i)[1]);
+        }
+        return total;
+    }
+
+    /**
+     * Pontos igualmente espaçados ao longo de uma linha (inclui o primeiro e o último).
+     * @return lista de [lat, lon, distanciaDesdeOInicio]
+     */
+    public static List<double[]> amostrar(List<double[]> linha, int quantidade) {
+        List<double[]> resultado = new java.util.ArrayList<>();
+        if (linha == null || linha.isEmpty()) {
+            return resultado;
+        }
+        double total = comprimento(linha);
+        if (quantidade < 2 || total == 0) {
+            resultado.add(new double[]{linha.get(0)[0], linha.get(0)[1], 0});
+            return resultado;
+        }
+        double passo = total / (quantidade - 1);
+        double acumulado = 0;
+        int i = 1;
+        for (int k = 0; k < quantidade; k++) {
+            double alvo = Math.min(k * passo, total);
+            while (i < linha.size() - 1) {
+                double seg = distanciaMetros(linha.get(i - 1)[0], linha.get(i - 1)[1], linha.get(i)[0], linha.get(i)[1]);
+                if (acumulado + seg >= alvo) {
+                    break;
+                }
+                acumulado += seg;
+                i++;
+            }
+            double[] a = linha.get(i - 1);
+            double[] b = linha.get(i);
+            double seg = distanciaMetros(a[0], a[1], b[0], b[1]);
+            double t = seg == 0 ? 0 : Math.max(0, Math.min(1, (alvo - acumulado) / seg));
+            resultado.add(new double[]{a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), alvo});
+        }
+        return resultado;
+    }
+
     /** Retângulo envolvente [latMin, latMax, lonMin, lonMax] de um círculo de raio em metros. */
     public static double[] retanguloEnvolvente(double lat, double lon, double raioMetros) {
         double dLat = Math.toDegrees(raioMetros / RAIO_TERRA_METROS);

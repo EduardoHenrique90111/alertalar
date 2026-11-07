@@ -101,6 +101,14 @@ public class ContextoTeste {
         return this;
     }
 
+    /** Permite ajustar os registros do histórico municipal antes de montar o contexto. */
+    public ContextoAnalise construir(java.util.function.Consumer<List<Ocorrencia>> ajusteHistorico) {
+        if (historico != null && historico.disponivel()) {
+            ajusteHistorico.accept(historico.valor().registros());
+        }
+        return construir();
+    }
+
     public ContextoAnalise construir() {
         return new ContextoAnalise(LAT, LON, "RS", codigoIbge, new ContextoAnalise.Parametros(1500, 500, 300, 30),
                 cursos, elevacao, setores, ocorrencias, historico);

@@ -19,6 +19,7 @@
     <button class="menu-botao" type="button" aria-expanded="false" aria-controls="menu">Menu</button>
     <nav id="menu" class="menu" aria-label="Principal">
       <a href="/#consultar">Consultar endereço</a>
+      <a href="/rota.html">Rota segura</a>
       <a href="/ocorrencias.html">Ocorrências</a>
       <a href="/relatar.html">Relatar alagamento</a>
       <a href="/metodologia.html">Como analisamos</a>
@@ -51,7 +52,7 @@
           <tr><td>Proximidade de água</td><td>2</td><td>Rio, canal ou corpo d'água a até 150 m: 3; até 400 m: 2; até 1.000 m: 1. Córrego, vala ou dreno a até 50 m: 2; até 150 m: 1. Nada em 1.500 m: 0.</td><td>OpenStreetMap (Overpass)</td></tr>
           <tr><td>Elevação relativa</td><td>2</td><td>Até 2 m acima do curso d'água mais próximo: 3; até 5 m: 2; até 10 m: 1. Ponto 5 m abaixo da média do entorno (300 m): 2; 2 m abaixo: 1. Vale a maior pontuação.</td><td>Copernicus DEM GLO-90</td></tr>
           <tr><td>Ocorrências próximas</td><td>2</td><td>Ocorrências confirmadas em 500 m nos últimos 30 anos: 1, 2 ou 3 ou mais. Três ou mais impedem a classificação baixo risco. Sem ocorrências: não pontua.</td><td>Registros oficiais e relatos validados</td></tr>
-          <tr><td>Histórico do município</td><td>0,75</td><td>Registros oficiais de inundação, enxurrada ou alagamento em 30 anos: 1 a 4 registros: 1; 5 ou mais: 2. Por ser municipal, nunca passa de 2.</td><td>S2iD / Atlas Digital (MIDR)</td></tr>
+          <tr><td>Histórico do município</td><td>0,75</td><td>Desastres oficiais ligados a chuva (inundação, enxurrada, alagamento ou chuvas intensas) registrados pelo município em 30 anos: 1 a 4 registros: 1; 5 ou mais: 2. Por ser municipal, nunca passa de 2.</td><td>Atlas Digital de Desastres (MIDR/Sedec, registros do S2iD)</td></tr>
         </tbody>
       </table>
     </div>
@@ -67,13 +68,25 @@
     </ul>
   </section>
 
+  <section class="bloco" aria-labelledby="t-rota">
+    <h2 id="t-rota">Rota segura</h2>
+    <p>A página <a href="/rota.html">Rota segura</a> sugere um caminho a pé ou de carro até um terreno mais alto. Ela não é uma rota oficial de evacuação: em emergência, siga sempre a Defesa Civil (199).</p>
+    <ul class="regras">
+      <li><strong>Destino:</strong> a altura do terreno é consultada em cerca de 85 pontos até 3 km da partida (Copernicus DEM GLO-90). Vale um ponto pelo menos 10 m mais alto que a partida (ou 5 m, se não houver) e fora dos setores de risco hidrológico do Serviço Geológico do Brasil. Entre os válidos, o mais próximo.</li>
+      <li><strong>Caminho:</strong> calculado sobre as ruas do OpenStreetMap pelo serviço Valhalla, com os setores de risco hidrológico próximos marcados como áreas a evitar. Se não houver caminho que desvie de todos, o resultado avisa.</li>
+      <li><strong>Conferência:</strong> o caminho é comparado de novo com os setores de risco e com a altura do terreno. Trechos que passam por setores ou que descem mais de 2 m abaixo da partida aparecem como aviso.</li>
+      <li><strong>Limites:</strong> o cálculo não sabe quais ruas estão alagadas ou bloqueadas agora, e a altura do terreno tem erro de alguns metros. Já estar em terreno alto e não haver ponto mais alto por perto também são respostas possíveis.</li>
+    </ul>
+  </section>
+
   <section class="bloco" aria-labelledby="t-limites">
     <h2 id="t-limites">Limitações conhecidas</h2>
     <ul>
       <li>O modelo de elevação tem resolução de 90 m e erro vertical de alguns metros; pode incluir construções e vegetação.</li>
       <li>O mapeamento de rios e córregos no OpenStreetMap é colaborativo e varia por região. Córregos canalizados podem não aparecer.</li>
       <li>O Serviço Geológico do Brasil mapeou setores de risco apenas em parte dos municípios.</li>
-      <li>Registros oficiais do S2iD são municipais e não indicam a rua afetada.</li>
+      <li>Registros oficiais do S2iD são municipais e não indicam a rua afetada. O sistema já inclui a base consolidada do Atlas Digital de Desastres (v1.1, 1991 a 2025, todos os municípios); eventos mais recentes entram quando uma planilha nova é importada.</li>
+      <li>A ausência de registro oficial não significa que o município nunca teve enchente: depende de a prefeitura ter registrado o evento no S2iD.</li>
       <li>A geocodificação pode errar o ponto. Por isso você confirma a posição no mapa antes da análise.</li>
       <li>Não há integração ativa com CEMADEN, INMET e ANA (veja a situação de cada fonte abaixo).</li>
     </ul>
@@ -102,6 +115,7 @@
         <h2>Navegação</h2>
         <ul>
           <li><a href="/#consultar">Consultar endereço</a></li>
+          <li><a href="/rota.html">Rota segura até terreno mais alto</a></li>
           <li><a href="/ocorrencias.html">Ocorrências registradas</a></li>
           <li><a href="/relatar.html">Relatar um alagamento</a></li>
           <li><a href="/metodologia.html">Metodologia e fontes</a></li>

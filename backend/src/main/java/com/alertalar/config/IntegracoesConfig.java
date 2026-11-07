@@ -9,6 +9,7 @@ import com.alertalar.integration.openmeteo.ElevacaoClient;
 import com.alertalar.integration.overpass.OverpassClient;
 import com.alertalar.integration.s2id.LeitorRegistrosOficiaisCsv;
 import com.alertalar.integration.sgb.SgbSetoresRiscoClient;
+import com.alertalar.integration.valhalla.ValhallaClient;
 import com.alertalar.integration.viacep.ViaCepClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -77,6 +78,12 @@ public class IntegracoesConfig {
     @Bean
     public SgbSetoresRiscoClient sgbSetoresRiscoClient(ClienteHttpExterno http, AlertaLarProperties props) {
         return new SgbSetoresRiscoClient(http, props.integracoes().sgbSetoresRiscoUrl());
+    }
+
+    @Bean
+    public ValhallaClient valhallaClient(ClienteHttpExterno http, AlertaLarProperties props) {
+        return new ValhallaClient(http, props.integracoes().rotasUrl(), props.integracoes().rotasChaveApi(),
+                new LimitadorIntervalo(props.integracoes().rotasIntervaloMinimo()));
     }
 
     @Bean

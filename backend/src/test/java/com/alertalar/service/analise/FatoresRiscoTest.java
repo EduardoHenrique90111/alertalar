@@ -1,6 +1,7 @@
 package com.alertalar.service.analise;
 
 import com.alertalar.entity.enums.SituacaoFator;
+import com.alertalar.entity.enums.TipoEvento;
 import com.alertalar.service.analise.fatores.FatorElevacaoRelativa;
 import com.alertalar.service.analise.fatores.FatorHistoricoMunicipal;
 import com.alertalar.service.analise.fatores.FatorOcorrenciasLocais;
@@ -171,6 +172,22 @@ class FatoresRiscoTest {
             AvaliacaoFator a = fator.avaliar(ContextoTeste.novo().historicoMunicipal(12, true).construir());
             assertEquals(2, a.pontuacao());
             assertTrue(a.explicacao().contains("não que este endereço"));
+        }
+
+        @Test
+        @DisplayName("Chuvas intensas contam como desastre ligado a chuva e o resumo detalha os tipos")
+        void chuvasIntensasEReconhecimentos() {
+            ContextoTeste ctx = ContextoTeste.novo().historicoMunicipal(3, true);
+            AvaliacaoFator a = fator.avaliar(ctx.construir(o -> {
+                o.get(0).setTipoEvento(TipoEvento.CHUVA_INTENSA);
+                o.get(0).setDescricao("Chuvas intensas registradas pelo município. Situação de emergência ou calamidade reconhecida pela União.");
+                o.get(1).setTipoEvento(TipoEvento.INUNDACAO);
+            }));
+            assertEquals(1, a.pontuacao());
+            assertTrue(a.explicacao().contains("1 inundação"), a.explicacao());
+            assertTrue(a.explicacao().contains("1 alagamento"), a.explicacao());
+            assertTrue(a.explicacao().contains("1 registro de chuvas intensas"), a.explicacao());
+            assertTrue(a.explicacao().contains("1 com situação de emergência ou calamidade reconhecida pela União"), a.explicacao());
         }
 
         @Test

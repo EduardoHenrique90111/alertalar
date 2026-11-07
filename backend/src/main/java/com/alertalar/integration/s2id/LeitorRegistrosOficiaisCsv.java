@@ -28,7 +28,7 @@ import java.util.Optional;
  *
  * <p>Os nomes de colunas variam entre exportações; o leitor reconhece variações comuns
  * (ex.: "Cod_IBGE_Mun", "Código IBGE", "Município", "UF", "Data do Evento", "COBRADE").
- * Somente desastres hidrológicos (inundação, enxurrada, alagamento) são aproveitados.</p>
+ * Aproveita os desastres ligados a chuva: inundação, enxurrada, alagamento e chuvas intensas.</p>
  */
 public class LeitorRegistrosOficiaisCsv {
 
@@ -56,7 +56,7 @@ public class LeitorRegistrosOficiaisCsv {
             throw new ArquivoInvalidoException("O arquivo enviado está vazio.");
         }
         String texto = decodificar(conteudo);
-        List<String> linhas = texto.lines().filter(l -> !l.isBlank()).toList();
+        List<String> linhas = registros(texto);
         if (linhas.size() < 2) {
             throw new ArquivoInvalidoException("O arquivo não contém linhas de dados.");
         }
@@ -107,7 +107,7 @@ public class LeitorRegistrosOficiaisCsv {
         return new ResultadoLeitura(registros, linhas.size() - 1, ignoradasNaoHidrologicas, ignoradasInvalidas);
     }
 
-    /** COBRADE 1.2.1 = inundação, 1.2.2 = enxurrada, 1.2.3 = alagamento. */
+    /** COBRADE 1.2.1 = inundação, 1.2.2 = enxurrada, 1.2.3 = alagamento, 1.3.2.1.4 = chuvas intensas. */
     static Optional<TipoEvento> classificar(String cobrade, String descricao) {
         String codigo = Texto.somenteDigitos(cobrade);
         if (codigo.startsWith("121")) {
@@ -119,6 +119,9 @@ public class LeitorRegistrosOficiaisCsv {
         if (codigo.startsWith("123")) {
             return Optional.of(TipoEvento.ALAGAMENTO);
         }
+        if (codigo.startsWith("13214")) {
+            return Optional.of(TipoEvento.CHUVA_INTENSA);
+        }
         String d = Texto.normalizar(descricao);
         if (d.contains("inunda")) {
             return Optional.of(TipoEvento.INUNDACAO);
@@ -128,6 +131,9 @@ public class LeitorRegistrosOficiaisCsv {
         }
         if (d.contains("alaga")) {
             return Optional.of(TipoEvento.ALAGAMENTO);
+        }
+        if (d.contains("chuvas intensas") || d.contains("chuva intensa")) {
+            return Optional.of(TipoEvento.CHUVA_INTENSA);
         }
         return Optional.empty();
     }
@@ -167,6 +173,35 @@ public class LeitorRegistrosOficiaisCsv {
         return Texto.limpar(campos.get(idx));
     }
 
+    /** Separa o texto em registros, juntando linhas quando um campo entre aspas contém quebra de linha. */
+    static List<String> registros(String texto) {
+        List<String> resultado = new ArrayList<>();
+        StringBuilder atual = new StringBuilder();
+        int aspas = 0;
+        for (String linha : texto.split("\\r?\\n", -1)) {
+            if (!atual.isEmpty()) {
+                atual.append('\n');
+            }
+            atual.append(linha);
+            for (int i = 0; i < linha.length(); i++) {
+                if (linha.charAt(i) == '"') {
+                    aspas++;
+                }
+            }
+            if (aspas % 2 == 0) {
+                if (!atual.toString().isBlank()) {
+                    resultado.add(atual.toString());
+                }
+                atual.setLength(0);
+                aspas = 0;
+            }
+        }
+        if (!atual.toString().isBlank()) {
+            resultado.add(atual.toString());
+        }
+        return resultado;
+    }
+
     static Map<String, Integer> mapearColunas(List<String> cabecalho) {
         Map<String, Integer> normalizado = new HashMap<>();
         for (int i = 0; i < cabecalho.size(); i++) {
@@ -196,7 +231,7 @@ public class LeitorRegistrosOficiaisCsv {
     }
 
     /** Divide uma linha CSV respeitando aspas ("campo; com separador"). */
-    static List<String> dividir(String linha, char separador) {
+    public static List<String> dividir(String linha, char separador) {
         List<String> campos = new ArrayList<>();
         StringBuilder atual = new StringBuilder();
         boolean entreAspas = false;

@@ -46,7 +46,10 @@ public record AlertaLarProperties(
             @DefaultValue("https://api.open-meteo.com/v1/forecast") String previsaoUrl,
             @DefaultValue("https://flood-api.open-meteo.com/v1/flood") String vazaoUrl,
             @DefaultValue("https://geoportal.sgb.gov.br/server/rest/services/gestaoterritorial/risco/MapServer/0")
-            String sgbSetoresRiscoUrl) {
+            String sgbSetoresRiscoUrl,
+            @DefaultValue("https://valhalla1.openstreetmap.de") String rotasUrl,
+            @DefaultValue("") String rotasChaveApi,
+            @DefaultValue("1100ms") Duration rotasIntervaloMinimo) {
     }
 
     public record Analise(@DefaultValue("1500") int raioCursosAguaMetros,
@@ -57,6 +60,7 @@ public record AlertaLarProperties(
 
     public record Limites(@DefaultValue("15") int consultasPorMinuto,
                           @DefaultValue("10") int relatosPorHora,
-                          @DefaultValue("10") int autenticacaoPorMinuto) {
+                          @DefaultValue("10") int autenticacaoPorMinuto,
+                          @DefaultValue("10") int rotasPorMinuto) {
     }
 }

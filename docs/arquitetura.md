@@ -21,13 +21,14 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
 | Pacote | Responsabilidade |
 |---|---|
 | `controller` | Endpoints REST, validação de entrada (`@Valid`), usuário logado. |
-| `service` | Regras de negócio: geocodificação (`EnderecoService`), orquestração da consulta (`ConsultaService`), coleta de dados em paralelo (`ColetaDadosService`), ocorrências e moderação, importação oficial, situação atual, usuários. |
+| `service` | Regras de negócio: geocodificação (`EnderecoService`), orquestração da consulta (`ConsultaService`), coleta de dados em paralelo (`ColetaDadosService`), rota segura (`RotaSeguraService`), ocorrências e moderação, importação oficial, situação atual, usuários. |
 | `service/analise` | Metodologia de risco: `FatorRisco` (interface), um fator por classe em `fatores/`, `AnaliseRiscoService` (consolidação). |
 | `repository` | Spring Data JPA. |
 | `entity` | Entidades JPA e enums. |
 | `dto` | Entrada e saída da API (records). |
-| `integration` | Clientes de ViaCEP, Nominatim, IBGE, Overpass, Open-Meteo, SGB e leitor de CSV do S2iD. `ClienteHttpExterno` centraliza tempo limite, User-Agent e tratamento de falhas. |
-| `config` | Propriedades, segurança, limitador de requisições, criação do administrador. |
+| `integration` | Clientes de ViaCEP, Nominatim, IBGE, Overpass, Open-Meteo, SGB, Valhalla (rotas) e leitor de CSV do S2iD. `ClienteHttpExterno` centraliza tempo limite, User-Agent e tratamento de falhas. |
+| `config` | Propriedades, segurança, limitador de requisições, criação do administrador. `config/migracao` guarda migrations Java do Flyway (carga da base oficial do Atlas Digital). |
+| `ferramentas` | Utilitário de linha de comando que gera a base compacta do Atlas Digital (`PrepararBaseAtlas`); não roda com a aplicação. |
 | `exception` | Exceções de negócio e `GlobalExceptionHandler` (Problem Details, RFC 9457). |
 | `util` | Texto, UFs e cálculos geográficos. |
 
@@ -46,6 +47,24 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
 4. `GET /api/consultas/{id}` reabre o resultado; a página chama `GET /api/situacao-atual`
    separadamente (chuva e vazão, sem efeito na classificação).
 
+## Fluxo da rota segura
+
+`GET /api/rotas/segura?lat=&lon=&modo=` (`RotaSeguraService`):
+
+1. Monta uma grade de 85 pontos (a partida e 7 anéis de 12 pontos, de 250 m a 3 km) e, em
+   paralelo, pede a altura do terreno de todos numa única chamada (Open-Meteo/Copernicus) e os
+   setores de risco do SGB num raio de 3,5 km (só os hidrológicos são usados).
+2. Candidatos a destino: pontos pelo menos 5 m mais altos que a partida e fora dos setores.
+   Os 10 m+ mais altos vêm primeiro; dentro de cada grupo, o mais perto. Sem candidatos, a
+   resposta diz se o ponto já está entre os mais altos da vizinhança (`JA_EM_TERRENO_ALTO`) ou
+   se não há terreno alto por perto (`SEM_TERRENO_ALTO`).
+3. Pede o caminho ao Valhalla com os setores entre a partida e o destino em
+   `exclude_polygons` (até 9 km de perímetro somado, os mais próximos do trajeto primeiro).
+   Se não houver caminho com desvio, tenta sem desvio e avisa. Testa até 3 destinos e faz no
+   máximo 4 chamadas ao roteador.
+4. Confere o caminho: setores atravessados e perfil de altura em 60 pontos (aviso quando algum
+   trecho fica mais de 2 m abaixo da partida). O resultado fica 15 min em cache.
+
 ## Metodologia (versão 1.0)
 
 | Fator | Categoria | Peso | Pontuação (0–3) |
@@ -54,7 +73,7 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
 | Proximidade de água | Suscetibilidade | 2 | rio/canal/corpo d'água ≤150 m: 3, ≤400 m: 2, ≤1.000 m: 1; córrego/vala ≤50 m: 2, ≤150 m: 1; nada em 1.500 m: 0 |
 | Elevação relativa | Suscetibilidade | 2 | desnível até a água ≤2 m: 3, ≤5 m: 2, ≤10 m: 1; ponto ≥5 m abaixo do entorno: 2, ≥2 m: 1 |
 | Ocorrências próximas | Histórico | 2 | confirmadas em 500 m/30 anos: 1, 2, ≥3 (≥3 impede "baixo"); nenhuma: não pontua |
-| Histórico municipal | Histórico | 0,75 | registros oficiais em 30 anos: 1–4: 1; ≥5: 2; base importada sem registros: 0; sem base: não pontua |
+| Histórico municipal | Histórico | 0,75 | desastres oficiais ligados a chuva (inundação, enxurrada, alagamento, chuvas intensas) em 30 anos: 1–4: 1; ≥5: 2; base carregada sem registros: 0; sem base para a UF: não pontua |
 
 Média ponderada M dos fatores avaliados: M ≥ 1,9 → alto; M ≥ 1,0 → moderado; abaixo → baixo.
 Exige pelo menos dois fatores avaliados, um deles geográfico; senão, "dados insuficientes".

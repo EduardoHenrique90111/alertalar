@@ -60,6 +60,7 @@ class AlertaLarIntegracaoTest {
     private ServidorHttpFalso apis;
     private ConfigurableApplicationContext app;
     private String base;
+    private boolean historicoOficialMigrado;
     private final AtomicReference<String> respostaSgb = new AtomicReference<>(RespostasSimuladas.sgbSemSetores());
     private final AtomicReference<String> respostaNominatim = new AtomicReference<>(RespostasSimuladas.nominatimNumero());
 
@@ -78,7 +79,13 @@ class AlertaLarIntegracaoTest {
                 .rota("/elevacao", r -> Resposta.json(RespostasSimuladas.elevacao(r.parametro("latitude").split(",").length)))
                 .rota("/previsao", r -> Resposta.json(RespostasSimuladas.previsaoChuva(LocalDateTime.now(ZoneOffset.UTC))))
                 .rota("/vazao", r -> Resposta.json(RespostasSimuladas.vazao(LocalDate.now(ZoneOffset.UTC))))
-                .rota("/sgb/query", r -> Resposta.json(respostaSgb.get()));
+                .rota("/sgb/query", r -> Resposta.json(respostaSgb.get()))
+                .rota("/valhalla/route", r -> {
+                    JsonNode locais = json.readTree(r.corpo()).path("locations");
+                    return Resposta.json(RespostasSimuladas.valhallaRota(locais.get(0).path("lat").asDouble(),
+                            locais.get(0).path("lon").asDouble(), locais.get(1).path("lat").asDouble(),
+                            locais.get(1).path("lon").asDouble()));
+                });
 
         app = SpringApplication.run(AlertaLarApplication.class,
                 "--server.port=0",
@@ -96,8 +103,15 @@ class AlertaLarIntegracaoTest {
                 "--alertalar.integracoes.previsao-url=" + apis.url("/previsao"),
                 "--alertalar.integracoes.vazao-url=" + apis.url("/vazao"),
                 "--alertalar.integracoes.sgb-setores-risco-url=" + apis.url("/sgb"),
+                "--alertalar.integracoes.rotas-url=" + apis.url("/valhalla"),
+                "--alertalar.integracoes.rotas-intervalo-minimo=10ms",
                 "--logging.level.root=WARN");
         base = "http://127.0.0.1:" + app.getEnvironment().getProperty("local.server.port");
+        historicoOficialMigrado = migracaoAplicada(url, usuario, senha, "4");
+        // O Flyway carrega a base oficial do Atlas (27 mil registros) num banco novo; os testes
+        // abaixo partem de um banco sem ocorrências para conferir contagens exatas (o administrador
+        // criado na inicialização é mantido).
+        executar(url, usuario, senha, "TRUNCATE consulta_fator, consulta, ocorrencia RESTART IDENTITY CASCADE");
     }
 
     @AfterAll
@@ -280,7 +294,48 @@ class AlertaLarIntegracaoTest {
         assertTrue(r.body().contains("E-mail ou senha incorretos"));
     }
 
+    @Test
+    @Order(11)
+    @DisplayName("Migração do histórico oficial (Atlas Digital) foi aplicada na inicialização")
+    void historicoOficialNaInicializacao() throws Exception {
+        assertTrue(historicoOficialMigrado, "migração V4 (base do Atlas Digital) deveria constar como aplicada");
+        JsonNode fontes = new Cliente().getJson("/api/fontes");
+        assertTrue(fontes.toString().contains("Atlas Digital de Desastres"), fontes.toString());
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Rota segura: destino mais alto, caminho do roteador e validação dos parâmetros")
+    void rotaSegura() throws Exception {
+        respostaSgb.set(RespostasSimuladas.sgbSemSetores());
+        Cliente c = new Cliente();
+        JsonNode r = c.getJson("/api/rotas/segura?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON + "&modo=A_PE");
+        assertEquals("ROTA_ENCONTRADA", r.path("status").asString(), r.toString());
+        assertEquals(5, r.path("destino").path("ganhoElevacao").asInt());
+        assertEquals(260, r.path("trajeto").path("distanciaMetros").asInt());
+        assertEquals(3, r.path("trajeto").path("coordenadas").size());
+        assertEquals("Vire à esquerda na Rua do Morro.", r.path("trajeto").path("instrucoes").get(1).path("texto").asString());
+        assertTrue(textoContem(r.path("avisos"), "193"));
+        assertEquals(1, apis.contar("/valhalla/route"));
+
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=40.7&lon=-74.0", null, false).statusCode(), "fora do Brasil");
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9&lon=-51.1&modo=AVIAO", null, false).statusCode());
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9", null, false).statusCode());
+    }
+
     // ------------------------------------------------------------------ apoio
+
+    private static boolean migracaoAplicada(String url, String usuario, String senha, String versao) {
+        try (Connection con = DriverManager.getConnection(url, usuario, senha);
+             java.sql.PreparedStatement ps = con.prepareStatement("SELECT success FROM flyway_schema_history WHERE version = ?")) {
+            ps.setString(1, versao);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() && rs.getBoolean(1);
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     private JsonNode fator(JsonNode consulta, String codigo) {
         for (JsonNode f : consulta.path("fatores").values()) {
@@ -295,6 +350,12 @@ class AlertaLarIntegracaoTest {
 
     private static String valorOu(String v, String padrao) {
         return v == null || v.isBlank() ? padrao : v;
+    }
+
+    private static void executar(String url, String usuario, String senha, String sql) throws Exception {
+        try (Connection con = DriverManager.getConnection(url, usuario, senha); Statement st = con.createStatement()) {
+            st.execute(sql);
+        }
     }
 
     private static void limparBanco(String url, String usuario, String senha) {

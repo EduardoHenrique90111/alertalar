@@ -172,7 +172,7 @@ public class ConsultaService {
                 };
             } else if (semRegistro) {
                 nivel = "SEM_REGISTRO";
-                rotulo = "Sem registros na base";
+                rotulo = "Nenhum registro encontrado (não significa que nunca ocorreu)";
             } else {
                 nivel = "NAO_AVALIADO";
                 rotulo = "Não avaliado (fonte indisponível)";
@@ -183,7 +183,7 @@ public class ConsultaService {
                 case SUSCETIBILIDADE -> new String[]{"Suscetibilidade geográfica",
                         "Características do terreno: proximidade de água e elevação relativa."};
                 case HISTORICO -> new String[]{"Risco histórico",
-                        "Ocorrências registradas no passado, oficiais ou relatos validados."};
+                        "Desastres oficiais registrados no município (Atlas Digital/S2iD) e ocorrências próximas validadas."};
             };
             lista.add(new DimensaoResponse(cat.name(), textos[0], textos[1], nivel, rotulo));
         }
