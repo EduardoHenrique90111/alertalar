@@ -16,9 +16,9 @@ export function criarMapa(elemento, { centro = CENTRO_BRASIL, zoom = 4 } = {}) {
   return mapa;
 }
 
-/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | oficial | relato | agua */
+/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | oficial | relato | agua | seguro | alternativa | usuario */
 export function icone(tipo) {
-  const tamanho = tipo === 'imovel' ? 30 : tipo === 'seguro' ? 26 : 18;
+  const tamanho = tipo === 'imovel' ? 30 : tipo === 'seguro' ? 26 : tipo === 'usuario' ? 20 : 18;
   return L.divIcon({
     className: 'marcador marcador-' + tipo,
     html: '<span></span>',

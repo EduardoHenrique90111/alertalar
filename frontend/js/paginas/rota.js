@@ -19,6 +19,91 @@ let marcadorPartida = null;
 let modo = 'A_PE';
 let ultimaRota = null;
 
+// ---------------- Onde a pessoa está (ponto azul) ----------------
+// Atualizado continuamente enquanto a página está aberta, para acompanhar o caminho.
+let pontoUsuario = null;
+let circuloPrecisao = null;
+let observador = null;
+
+function mostrarUsuario(posicao) {
+  const ll = L.latLng(posicao.coords.latitude, posicao.coords.longitude);
+  const raio = Math.min(posicao.coords.accuracy || 0, 1500);
+  if (!pontoUsuario) {
+    circuloPrecisao = L.circle(ll, { radius: raio, className: 'precisao-usuario', interactive: false }).addTo(mapa);
+    pontoUsuario = L.marker(ll, { icon: icone('usuario'), title: 'Você está aqui', keyboard: false, zIndexOffset: 1200 })
+      .bindTooltip('Você está aqui').addTo(mapa);
+  } else {
+    pontoUsuario.setLatLng(ll);
+    circuloPrecisao.setLatLng(ll).setRadius(raio);
+  }
+  return ll;
+}
+
+function acompanharUsuario() {
+  if (observador !== null || !navigator.geolocation) return;
+  observador = navigator.geolocation.watchPosition(mostrarUsuario, (erro) => {
+    if (erro.code === erro.PERMISSION_DENIED) {
+      navigator.geolocation.clearWatch(observador);
+      observador = null;
+    }
+  }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+}
+
+// Botão no canto do mapa: centraliza no ponto azul (pede a localização se ainda não tiver)
+const ControleLocalizacao = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd() {
+    const caixa = L.DomUtil.create('div', 'leaflet-bar controle-localizacao');
+    const botao = L.DomUtil.create('button', '', caixa);
+    botao.type = 'button';
+    botao.title = 'Mostrar onde estou';
+    botao.setAttribute('aria-label', 'Mostrar onde estou no mapa');
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    [['circle', { cx: 12, cy: 12, r: 4, class: 'mira-centro' }], ['circle', { cx: 12, cy: 12, r: 8, class: 'mira-anel' }],
+      ['path', { d: 'M12 1v4M12 19v4M1 12h4M19 12h4', class: 'mira-anel' }]].forEach(([tag, attrs]) => {
+      const n = document.createElementNS(ns, tag);
+      Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v));
+      svg.append(n);
+    });
+    botao.append(svg);
+    L.DomEvent.disableClickPropagation(caixa);
+    L.DomEvent.on(botao, 'click', () => centralizarNoUsuario(botao));
+    return caixa;
+  },
+});
+mapa.addControl(new ControleLocalizacao());
+
+function centralizarNoUsuario(botao) {
+  limpar(msg);
+  if (pontoUsuario) {
+    mapa.setView(pontoUsuario.getLatLng(), Math.max(mapa.getZoom(), 16));
+    return;
+  }
+  if (!navigator.geolocation) {
+    mensagem(msg, 'atencao', 'Este navegador não informa a localização.');
+    return;
+  }
+  botao.disabled = true;
+  navigator.geolocation.getCurrentPosition((p) => {
+    botao.disabled = false;
+    mapa.setView(mostrarUsuario(p), 16);
+    acompanharUsuario();
+  }, () => {
+    botao.disabled = false;
+    mensagem(msg, 'atencao', 'Não foi possível obter sua localização. Verifique se o navegador tem permissão para acessá-la.');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+
+// Se a pessoa já autorizou a localização antes, o ponto azul aparece sem perguntar de novo
+if (navigator.permissions && navigator.geolocation) {
+  navigator.permissions.query({ name: 'geolocation' })
+    .then((estado) => { if (estado.state === 'granted') acompanharUsuario(); })
+    .catch(() => {});
+}
+
 // ---------------- Ponto de partida ----------------
 function definirPartida(latlng, origem) {
   if (!marcadorPartida) {
@@ -48,7 +133,8 @@ $('botao-local').addEventListener('click', () => {
   botao.textContent = 'Obtendo localização…';
   navigator.geolocation.getCurrentPosition(
     (p) => {
-      const ll = L.latLng(p.coords.latitude, p.coords.longitude);
+      const ll = mostrarUsuario(p);
+      acompanharUsuario();
       mapa.setView(ll, 16);
       definirPartida(ll, 'gps');
       botao.disabled = false;
