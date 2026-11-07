@@ -2,10 +2,15 @@
 
 Sistema web de consulta e análise de riscos de enchentes e alagamentos em imóveis e regiões.
 
-A pessoa informa um endereço, confirma a posição no mapa e recebe uma classificação
-(**baixo risco**, **risco moderado**, **alto risco** ou **dados insuficientes**) com a explicação
-de cada fator, as fontes usadas e a data dos dados. A situação atual (chuva e rios) aparece à
-parte e não altera a classificação.
+A pessoa informa um endereço, confirma a posição no mapa e recebe duas respostas:
+
+- **Risco agora** (baixo, atenção, alto ou muito alto): a chuva das últimas horas e a prevista
+  para as próximas 24 horas, pelos limites de chuvas intensas do INMET, combinadas com a
+  suscetibilidade do local e a subida de rios próximos. É recalculado cada vez que o resultado
+  é aberto.
+- **Suscetibilidade do local** (**baixo risco**, **risco moderado**, **alto risco** ou **dados
+  insuficientes**): o quanto o endereço tende a ser atingido quando chove forte, com a explicação
+  de cada fator, as fontes usadas e a data dos dados. Não muda com o tempo do dia.
 
 A página **Rota segura** sugere um caminho a pé ou de carro, a partir da localização da pessoa
 ou de um endereço, até um terreno mais alto fora das áreas de risco de inundação mapeadas.
@@ -19,7 +24,7 @@ afetada por enchentes ou geograficamente suscetível a alagamentos, sempre separ
 - **suscetibilidade geográfica**: proximidade de rios e córregos e altura relativa do terreno;
 - **risco histórico**: desastres oficiais do município (inundações, enxurradas, alagamentos e
   chuvas intensas registrados no S2iD, de 1991 a 2025, já incluídos) e relatos de moradores verificados;
-- **situação atual**: chuva e vazão de rios estimadas por modelos (apenas informativo).
+- **situação atual**: chuva e vazão de rios estimadas por modelos, que formam o risco agora.
 
 O sistema nunca afirma que um local está livre de enchentes e não inventa dados: quando uma
 fonte não responde ou não cobre a região, o fator aparece como indisponível e não entra na conta.
@@ -161,8 +166,9 @@ cd backend
 mvn test
 ```
 
-Há 122 testes (JUnit + Mockito): validação de endereços, geocodificação, fatores e classificação
-de risco, processamento da consulta, registro e moderação de ocorrências, importação de
+Há 154 testes (JUnit + Mockito): validação de endereços, geocodificação, código IBGE, fatores e
+classificação de risco, risco agora (níveis de chuva do INMET e combinação com a
+suscetibilidade), processamento da consulta, registro e moderação de ocorrências, importação de
 planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
 perfil de altura), tratamento de erros, segurança e comunicação HTTP com as APIs externas
 (contra um servidor local que responde no mesmo formato das APIs reais).
@@ -204,7 +210,7 @@ em português e, em erros de validação, o campo `erros` por campo.
 | GET | `/api/ocorrencias/proximas?lat=&lon=&raio=&anos=` | público | Ocorrências confirmadas em torno de um ponto |
 | POST | `/api/ocorrencias` | público | Envia relato (fica `PENDENTE`) |
 | GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
-| GET | `/api/situacao-atual?lat=&lon=` | público | Chuva e vazão atuais (não altera a classificação) |
+| GET | `/api/situacao-atual?lat=&lon=&consulta=` | público | Chuva (72 h passadas e 72 h previstas), vazão e risco agora; `consulta` (opcional, UUID) usa a suscetibilidade daquela consulta |
 | GET | `/api/rotas/segura?lat=&lon=&modo=A_PE` | público | Caminho até terreno mais alto fora de áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
 | POST | `/api/auth/registro` | público | Cria conta e já entra |
 | POST | `/api/auth/login` | público | Entra (sessão) |
@@ -309,6 +315,11 @@ Observações:
   não aparecer.
 - O SGB mapeou setores de risco em parte dos municípios; a ausência de setor não é tratada como
   segurança.
+- O risco agora usa chuva estimada por modelos (Open-Meteo), que erram a chuva de um bairro,
+  principalmente em temporais isolados. Não é alerta oficial.
+- O código IBGE do município vem do CEP (ViaCEP), de uma lista guardada no sistema (5.256
+  municípios do Atlas Digital) ou da API do IBGE, nessa ordem. Se o nome da cidade estiver
+  muito diferente do oficial, o histórico municipal fica indisponível.
 - Registros do S2iD são municipais (não indicam a rua). A base embutida vai até 2025; eventos
   mais novos dependem de importar a planilha, pois não há API pública documentada. A importação
   aceita CSV (não XLSX). A ausência de registro não significa que o município nunca teve enchente.

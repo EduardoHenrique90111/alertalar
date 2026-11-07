@@ -9,7 +9,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Chuva e vazão modeladas para o ponto (contexto atual; não altera a classificação de risco). */
+import java.util.UUID;
+
+/** Chuva e vazão modeladas para o ponto e o risco deste momento (não altera a classificação da consulta). */
 @RestController
 @RequestMapping("/api/situacao-atual")
 public class SituacaoAtualController {
@@ -22,7 +24,8 @@ public class SituacaoAtualController {
 
     @GetMapping
     public SituacaoAtualResponse consultar(@RequestParam @DecimalMin("-34.0") @DecimalMax("5.5") double lat,
-                                           @RequestParam @DecimalMin("-74.2") @DecimalMax("-28.6") double lon) {
-        return service.consultar(lat, lon);
+                                           @RequestParam @DecimalMin("-74.2") @DecimalMax("-28.6") double lon,
+                                           @RequestParam(required = false) UUID consulta) {
+        return service.consultar(lat, lon, consulta);
     }
 }

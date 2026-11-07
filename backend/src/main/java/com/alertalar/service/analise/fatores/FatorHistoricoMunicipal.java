@@ -37,7 +37,8 @@ public class FatorHistoricoMunicipal implements FatorRisco {
     @Override
     public AvaliacaoFator avaliar(ContextoAnalise ctx) {
         if (Texto.vazio(ctx.codigoIbge())) {
-            return indisponivel("O código IBGE do município não pôde ser identificado, então os registros municipais não foram consultados.");
+            return indisponivel("Não foi possível identificar o município (código IBGE) pelo nome da cidade informado, então os "
+                    + "registros municipais não foram consultados. Confira o nome da cidade e faça uma nova consulta.");
         }
         Dado<HistoricoMunicipal> dado = ctx.historicoMunicipal();
         if (!dado.disponivel()) {

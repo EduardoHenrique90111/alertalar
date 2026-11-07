@@ -32,7 +32,8 @@ public record ConsultaResponse(
     public record DimensaoResponse(String categoria, String titulo, String descricao, String nivel, String rotuloNivel) {
     }
 
-    public record HistoricoMunicipalResponse(boolean baseImportada, int total, List<OcorrenciaResponse> registros) {
+    public record HistoricoMunicipalResponse(boolean municipioIdentificado, boolean baseImportada, int total,
+                                             List<OcorrenciaResponse> registros) {
     }
 
     /** Item resumido para o histórico de consultas do usuário. */

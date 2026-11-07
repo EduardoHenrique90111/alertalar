@@ -118,7 +118,8 @@ public class ConsultaService {
                 .map(o -> OcorrenciaResponse.de(o.ocorrencia(), o.distanciaMetros()))
                 .toList();
         HistoricoMunicipal historico = coleta.historicoMunicipal(e.getEstado(), e.getCodigoIbge());
-        HistoricoMunicipalResponse historicoResp = new HistoricoMunicipalResponse(historico.baseImportadaParaUf(),
+        HistoricoMunicipalResponse historicoResp = new HistoricoMunicipalResponse(e.getCodigoIbge() != null,
+                historico.baseImportadaParaUf(),
                 historico.registros().size(),
                 historico.registros().stream().limit(20).map(OcorrenciaResponse::de).toList());
 
@@ -196,10 +197,10 @@ public class ConsultaService {
             avisos.add("O número do imóvel não foi localizado: o ponto analisado representa a rua e pode estar a "
                     + "algumas centenas de metros do imóvel. Para mais precisão, refaça a consulta confirmando a posição no mapa.");
         }
-        avisos.add("A classificação resume indícios nos dados disponíveis. Não é laudo técnico, estudo hidrológico "
-                + "nem previsão do tempo.");
-        avisos.add("A situação atual (chuva e rios) é exibida separadamente e não altera esta classificação. "
-                + "Siga sempre os alertas da Defesa Civil.");
+        avisos.add("A suscetibilidade do local resume indícios nos dados disponíveis. Não é laudo técnico nem "
+                + "estudo hidrológico, e não muda com o tempo do dia.");
+        avisos.add("O risco agora usa a chuva e os rios deste momento, estimados por modelos. Siga sempre os alertas "
+                + "da Defesa Civil.");
         return avisos;
     }
 

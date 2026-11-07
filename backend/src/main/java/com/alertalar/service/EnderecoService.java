@@ -9,6 +9,7 @@ import com.alertalar.exception.EnderecoNaoEncontradoException;
 import com.alertalar.exception.IntegracaoExternaException;
 import com.alertalar.exception.PrecisaoInsuficienteException;
 import com.alertalar.integration.ibge.IbgeLocalidadesClient;
+import com.alertalar.integration.ibge.MunicipiosIbge;
 import com.alertalar.integration.nominatim.NominatimClient;
 import com.alertalar.integration.nominatim.NominatimClient.ResultadoGeocodificacao;
 import com.alertalar.integration.viacep.ViaCepClient;
@@ -39,14 +40,16 @@ public class EnderecoService {
     private final ViaCepClient viaCep;
     private final NominatimClient nominatim;
     private final IbgeLocalidadesClient ibge;
+    private final MunicipiosIbge municipios;
     private final EnderecoRepository repository;
     private final FonteDadosService fontes;
 
     public EnderecoService(ViaCepClient viaCep, NominatimClient nominatim, IbgeLocalidadesClient ibge,
-                           EnderecoRepository repository, FonteDadosService fontes) {
+                           MunicipiosIbge municipios, EnderecoRepository repository, FonteDadosService fontes) {
         this.viaCep = viaCep;
         this.nominatim = nominatim;
         this.ibge = ibge;
+        this.municipios = municipios;
         this.repository = repository;
         this.fontes = fontes;
     }
@@ -109,7 +112,13 @@ public class EnderecoService {
         String chave = chave(limpo);
         Optional<Endereco> emCache = repository.findByChaveNormalizada(chave);
         if (emCache.isPresent()) {
-            return emCache.get();
+            Endereco salvo = emCache.get();
+            if (Texto.vazio(salvo.getCodigoIbge()) && !Texto.vazio(codigoIbge)) {
+                // endereço guardado quando o município não pôde ser identificado: completa agora
+                salvo.setCodigoIbge(codigoIbge);
+                return repository.save(salvo);
+            }
+            return salvo;
         }
         List<Candidato> candidatos = geocodificar(limpo);
         if (candidatos.isEmpty()) {
@@ -201,7 +210,12 @@ public class EnderecoService {
         }
     }
 
+    /** Código IBGE do município: lista guardada no sistema e, se não estiver nela, API do IBGE. */
     private String codigoIbgeSilencioso(String uf, String cidade) {
+        Optional<String> local = municipios.codigo(uf, cidade);
+        if (local.isPresent()) {
+            return local.get();
+        }
         try {
             Optional<String> codigo = ibge.codigoMunicipio(uf, cidade);
             codigo.ifPresent(c -> fontes.registrarAcesso("IBGE_LOCALIDADES", Instant.now()));

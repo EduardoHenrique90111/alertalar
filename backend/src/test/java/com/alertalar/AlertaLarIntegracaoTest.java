@@ -261,6 +261,10 @@ class AlertaLarIntegracaoTest {
         assertTrue(s.path("chuva").path("ultimas24hMm").asDouble() > 0);
         assertEquals("SUBINDO", s.path("vazao").path("tendencia").asString());
         assertTrue(textoContem(s.path("avisos"), "40199"));
+        // 2 mm/h nas últimas horas simuladas = 48 mm em 24 h: perigo potencial (nível 1)
+        assertEquals(1, s.path("riscoAgora").path("nivelChuva").asInt(), s.toString());
+        assertEquals("ATENCAO", s.path("riscoAgora").path("nivel").asString(), "sem consulta: suscetibilidade moderada");
+        assertTrue(s.path("riscoAgora").path("criterio").asString().contains("INMET"));
     }
 
     @Test
