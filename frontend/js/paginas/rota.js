@@ -105,16 +105,38 @@ if (navigator.permissions && navigator.geolocation) {
 }
 
 // ---------------- Ponto de partida ----------------
-function definirPartida(latlng, origem) {
+let temporizadorRecalculo = null;
+
+/**
+ * Muda o ponto de partida. Se já havia uma rota na tela, ela é apagada na hora (nunca fica um
+ * caminho saindo do ponto antigo) e uma nova é calculada a partir do novo ponto.
+ */
+function definirPartida(latlng, origem, descricao) {
   if (!marcadorPartida) {
     marcadorPartida = L.marker(latlng, { icon: icone('imovel'), draggable: true, title: 'Ponto de partida', zIndexOffset: 1000 }).addTo(mapa);
     marcadorPartida.on('dragend', () => definirPartida(marcadorPartida.getLatLng(), 'mapa'));
   } else {
     marcadorPartida.setLatLng(latlng);
   }
-  const textoOrigem = { gps: 'sua localização', mapa: 'ponto marcado no mapa', endereco: 'endereço encontrado', link: 'endereço da consulta' }[origem] || 'ponto marcado';
+  const textoOrigem = descricao || { gps: 'sua localização', mapa: 'ponto marcado no mapa', endereco: 'endereço encontrado', link: 'endereço da consulta' }[origem] || 'ponto marcado';
   partidaTexto.textContent = `Ponto de partida: ${textoOrigem} (${latlng.lat.toFixed(5).replace('.', ',')}, ${latlng.lng.toFixed(5).replace('.', ',')}).`;
   botaoCalcular.disabled = false;
+  if (ultimaRota) {
+    apagarRota();
+    clearTimeout(temporizadorRecalculo);
+    temporizadorRecalculo = setTimeout(calcular, 500);
+  }
+}
+
+function apagarRota() {
+  camadaResultado.clearLayers();
+  $('resultado-rota').classList.add('oculto');
+  ultimaRota = null;
+}
+
+/** Nome curto de um resultado do Nominatim: "Canoas Shopping, 6750, Avenida Guilherme Schell" */
+function nomeCurto(enderecoEncontrado) {
+  return (enderecoEncontrado || '').split(',').slice(0, 3).map((t) => t.trim()).filter(Boolean).join(', ');
 }
 
 mapa.on('click', (ev) => {
@@ -156,9 +178,10 @@ formBusca.addEventListener('submit', async (ev) => {
   const cidade = formBusca.cidade.value.trim();
   const estado = formBusca.estado.value;
   if (!rua || !cidade || !estado) {
-    mensagem(msg, 'atencao', 'Para buscar, informe rua, cidade e estado.');
+    mensagem(msg, 'atencao', 'Para buscar, informe o endereço ou o nome do local, a cidade e o estado.');
     return;
   }
+  limpar($('b-opcoes'));
   // "Rua das Flores, 120" → rua e número separados
   const m = rua.match(/^(.*?)[,\s]+(\d+[A-Za-z]?)\s*$/);
   const params = { rua: m ? m[1] : rua, numero: m ? m[2] : '', cidade, estado };
@@ -166,12 +189,22 @@ formBusca.addEventListener('submit', async (ev) => {
   botao.disabled = true;
   try {
     const r = await api('/api/enderecos/buscar', { params });
-    const c = r.candidatos[0];
-    const ll = L.latLng(c.latitude, c.longitude);
-    mapa.setView(ll, 17);
-    definirPartida(ll, 'endereco');
-    if (!c.suficienteParaAnalise) {
-      mensagem(msg, 'atencao', 'O endereço foi localizado só de forma aproximada. Arraste o marcador até o ponto exato antes de calcular.');
+    escolherCandidato(r.candidatos[0]);
+    // Mais de um lugar com esse nome (ex.: "Shopping"): deixa a pessoa escolher o certo
+    const outros = r.candidatos.slice(1).filter((c, i, todos) => todos.findIndex((o) => nomeCurto(o.enderecoEncontrado) === nomeCurto(c.enderecoEncontrado)) === i
+      && nomeCurto(c.enderecoEncontrado) !== nomeCurto(r.candidatos[0].enderecoEncontrado));
+    const opcoes = limpar($('b-opcoes'));
+    if (outros.length) {
+      opcoes.append(el('p', { class: 'dica' }, 'Não é esse lugar? Escolha outro resultado:'),
+        el('ul', { class: 'opcoes-busca' }, outros.map((c) => {
+          const botao = el('button', { type: 'button', class: 'opcao-busca' }, nomeCurto(c.enderecoEncontrado));
+          botao.addEventListener('click', () => {
+            escolherCandidato(c);
+            opcoes.querySelectorAll('.opcao-busca').forEach((b) => b.removeAttribute('aria-current'));
+            botao.setAttribute('aria-current', 'true');
+          });
+          return el('li', {}, botao);
+        })));
     }
   } catch (e) {
     mensagem(msg, 'erro', e.message);
@@ -188,8 +221,19 @@ document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('clic
 
 botaoCalcular.addEventListener('click', calcular);
 
+function escolherCandidato(c) {
+  limpar(msg);
+  const ll = L.latLng(c.latitude, c.longitude);
+  mapa.setView(ll, 17);
+  definirPartida(ll, 'endereco', nomeCurto(c.enderecoEncontrado));
+  if (!c.suficienteParaAnalise) {
+    mensagem(msg, 'atencao', 'O lugar foi encontrado só de forma aproximada. Arraste o marcador até o ponto exato.');
+  }
+}
+
 // ---------------- Cálculo ----------------
 async function calcular() {
+  clearTimeout(temporizadorRecalculo);
   if (!marcadorPartida) return;
   limpar(msg);
   const p = marcadorPartida.getLatLng();

@@ -42,12 +42,12 @@
     <section class="painel" aria-labelledby="t-partida">
       <h2 id="t-partida">Ponto de partida</h2>
       <button class="botao botao-largo" type="button" id="botao-local">Usar minha localização</button>
-      <p class="dica">Ou clique no mapa onde você está, ou busque um endereço:</p>
+      <p class="dica">Ou clique no mapa onde você está, ou busque um endereço ou local:</p>
       <form id="form-busca" novalidate>
         <div class="campos">
           <div class="campo dois-tercos">
-            <label for="b-rua">Rua e número</label>
-            <input id="b-rua" name="rua" maxlength="200" autocomplete="address-line1" placeholder="Rua das Flores, 120">
+            <label for="b-rua">Endereço ou nome do local</label>
+            <input id="b-rua" name="rua" maxlength="200" autocomplete="address-line1" placeholder="Rua das Flores, 120 ou Canoas Shopping">
           </div>
           <div class="campo terco">
             <label for="b-estado">Estado</label>
@@ -58,8 +58,9 @@
             <input id="b-cidade" name="cidade" maxlength="120" autocomplete="address-level2">
           </div>
         </div>
-        <div class="acoes"><button class="botao botao-secundario botao-pequeno" type="submit" id="botao-buscar">Buscar endereço</button></div>
+        <div class="acoes"><button class="botao botao-secundario botao-pequeno" type="submit" id="botao-buscar">Buscar</button></div>
       </form>
+      <div id="b-opcoes" aria-live="polite"></div>
 
       <fieldset class="bloco-curto">
         <legend class="rotulo">Como você vai se deslocar</legend>

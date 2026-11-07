@@ -456,3 +456,7 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 .controle-localizacao svg { width: 20px; height: 20px; }
 .controle-localizacao .mira-centro { fill: var(--azul-gps); }
 .controle-localizacao .mira-anel { fill: none; stroke: var(--azul-rio); stroke-width: 2; stroke-linecap: round; }
+.opcoes-busca { list-style: none; padding: 0; margin: 0 0 var(--e-3); display: grid; gap: var(--e-2); }
+.opcao-busca { width: 100%; text-align: left; font: inherit; font-size: var(--t-pequeno); background: var(--branco); color: var(--azul-rio); border: 1px solid var(--linha); border-radius: 8px; padding: var(--e-2) var(--e-3); cursor: pointer; }
+.opcao-busca:hover, .opcao-busca:focus-visible { border-color: var(--azul-agua); background: var(--azul-claro); }
+.opcao-busca[aria-current="true"] { border-color: var(--azul-rio); font-weight: 700; }
