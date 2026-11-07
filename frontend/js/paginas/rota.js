@@ -122,7 +122,9 @@ function definirPartida(latlng, origem, descricao) {
   }
   const textoOrigem = descricao || { gps: 'sua localização', mapa: 'ponto marcado no mapa', endereco: 'endereço encontrado', link: 'endereço da consulta' }[origem] || 'ponto marcado';
   partidaTexto.textContent = `Ponto de partida: ${textoOrigem} (${latlng.lat.toFixed(5).replace('.', ',')}, ${latlng.lng.toFixed(5).replace('.', ',')}).`;
+  $('remover-partida').hidden = false;
   botaoCalcular.disabled = false;
+  if (origem !== 'endereco') marcarTratado(formBusca); // GPS ou mapa: o texto do campo não vale mais
   if (ultimaRota) {
     apagarRota();
     clearTimeout(temporizadorRecalculo);
@@ -141,6 +143,8 @@ function definirDestino(latlng, origem, descricao) {
   }
   const texto = descricao || (origem === 'mapa' ? 'ponto marcado no mapa' : 'endereço encontrado');
   $('destino-texto').textContent = `Destino: ${texto} (${latlng.lat.toFixed(5).replace('.', ',')}, ${latlng.lng.toFixed(5).replace('.', ',')}).`;
+  $('remover-destino').hidden = false;
+  if (origem !== 'endereco') marcarTratado(formDestino);
   // Com partida e destino definidos, o caminho já é calculado (e a rota antiga, se houver, some)
   if (marcadorPartida) {
     apagarRota();
@@ -161,12 +165,77 @@ function nomeCurto(enderecoEncontrado) {
   return (enderecoEncontrado || '').split(',').slice(0, 3).map((t) => t.trim()).filter(Boolean).join(', ');
 }
 
-// Clique no mapa: marca o destino quando a pessoa escolhe o destino (e já tem partida); senão, a partida
-mapa.on('click', (ev) => {
+// Marcar no mapa: o clique só marca um ponto depois que a pessoa pede ("Marcar no mapa"),
+// para um toque sem querer no mapa não mudar a partida nem o destino.
+let marcando = null; // 'partida' | 'destino' | null
+
+function iniciarMarcacao(tipo) {
+  marcando = tipo;
   limpar(msg);
-  if (tipoDestino === 'ESCOLHIDO' && marcadorPartida) definirDestino(ev.latlng, 'mapa');
+  $('mapa-rota').classList.add('marcando');
+  $('aviso-marcacao-texto').textContent = tipo === 'partida' ? 'Toque no mapa no ponto de partida.' : 'Toque no mapa no destino.';
+  $('aviso-marcacao').classList.remove('oculto');
+  $('mapa-rota').scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+}
+
+function encerrarMarcacao() {
+  marcando = null;
+  $('mapa-rota').classList.remove('marcando');
+  $('aviso-marcacao').classList.add('oculto');
+}
+
+$('marcar-partida').addEventListener('click', () => iniciarMarcacao('partida'));
+$('marcar-destino').addEventListener('click', () => iniciarMarcacao('destino'));
+$('cancelar-marcacao').addEventListener('click', encerrarMarcacao);
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && marcando) encerrarMarcacao(); });
+
+mapa.on('click', (ev) => {
+  if (!marcando) return;
+  const tipo = marcando;
+  encerrarMarcacao();
+  if (tipo === 'destino') definirDestino(ev.latlng, 'mapa');
   else definirPartida(ev.latlng, 'mapa');
 });
+
+function removerPartida() {
+  if (marcadorPartida) {
+    mapa.removeLayer(marcadorPartida);
+    marcadorPartida = null;
+  }
+  clearTimeout(temporizadorRecalculo);
+  apagarRota();
+  partidaTexto.textContent = 'Ponto de partida ainda não definido.';
+  $('remover-partida').hidden = true;
+  botaoCalcular.disabled = true;
+  limpar($('b-opcoes'));
+}
+
+function removerDestino() {
+  if (marcadorDestino) {
+    mapa.removeLayer(marcadorDestino);
+    marcadorDestino = null;
+  }
+  clearTimeout(temporizadorRecalculo);
+  apagarRota();
+  $('destino-texto').textContent = 'Destino ainda não definido. Busque acima ou marque no mapa.';
+  $('remover-destino').hidden = true;
+  limpar($('d-opcoes'));
+}
+
+$('remover-partida').addEventListener('click', removerPartida);
+$('remover-destino').addEventListener('click', removerDestino);
+
+// Texto digitado num campo de busca e ainda não buscado: buscado antes de calcular a rota
+let calcularDepoisDaBusca = false;
+function chaveBusca(form) {
+  return [form.rua.value.trim(), form.cidade.value.trim(), form.estado.value].join('|').toLowerCase();
+}
+function marcarTratado(form) {
+  form.dataset.tratado = chaveBusca(form);
+}
+function textoPendente(form) {
+  return form.rua.value.trim() !== '' && form.dataset.tratado !== chaveBusca(form);
+}
 
 // Para onde: terreno mais alto (automático) ou um lugar escolhido
 document.querySelectorAll('input[name="tipo-destino"]').forEach((radio) => radio.addEventListener('change', () => {
@@ -236,6 +305,7 @@ function configurarBusca(form, opcoesEl, aoEscolher) {
     botao.disabled = true;
     try {
       const r = await api('/api/enderecos/buscar', { params });
+      marcarTratado(form);
       aoEscolher(r.candidatos[0]);
       // Mais de um lugar com esse nome (ex.: "Shopping"): deixa a pessoa escolher o certo
       const primeiro = nomeCurto(r.candidatos[0].enderecoEncontrado);
@@ -253,7 +323,12 @@ function configurarBusca(form, opcoesEl, aoEscolher) {
             return el('li', {}, opcao);
           })));
       }
+      if (calcularDepoisDaBusca) {
+        calcularDepoisDaBusca = false;
+        calcular();
+      }
     } catch (e) {
+      calcularDepoisDaBusca = false;
       mensagem(msg, 'erro', e.message);
     } finally {
       botao.disabled = false;
@@ -288,6 +363,16 @@ function escolherCandidato(c, definir) {
 async function calcular() {
   clearTimeout(temporizadorRecalculo);
   limpar(msg);
+  encerrarMarcacao();
+  // Endereço digitado e ainda não buscado: busca primeiro (e calcula em seguida)
+  const pendentes = [formBusca].concat(tipoDestino === 'ESCOLHIDO' ? [formDestino] : []).filter(textoPendente);
+  if (pendentes.length) {
+    calcularDepoisDaBusca = true;
+    const f = pendentes[0];
+    if (f.requestSubmit) f.requestSubmit();
+    else f.dispatchEvent(new Event('submit', { cancelable: true }));
+    return;
+  }
   if (!marcadorPartida) {
     mensagem(msg, 'atencao', 'Defina de onde você sai: use sua localização, busque um endereço ou clique no mapa.');
     return;

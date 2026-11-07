@@ -143,6 +143,21 @@ class EnderecoServiceTest {
     }
 
     @Test
+    @DisplayName("Nome de lugar escrito separado ('Park Shopping') também é buscado junto ('ParkShopping')")
+    void nomeDeLugarJunto() {
+        when(nominatim.buscarEstruturado(anyString(), any(), anyString(), anyString(), anyInt())).thenReturn(List.of());
+        when(nominatim.buscarTexto("Park Shopping, Canoas - RS, Brasil", 5)).thenReturn(List.of());
+        when(nominatim.buscarTexto("ParkShopping, Canoas - RS, Brasil", 5)).thenReturn(List.of(
+                new ResultadoGeocodificacao(-29.9105, -51.164, 30, "shop", "4502", "Avenida Farroupilha", "Marechal Rondon",
+                        "Canoas", "RS", null, "ParkShopping Canoas, 4502, Avenida Farroupilha, Canoas")));
+        LocalizacaoResponse r = servico.localizar(new EnderecoRequest(null, "Park Shopping", null, null, "Canoas", "RS", null, null));
+        assertTrue(r.candidatos().get(0).enderecoEncontrado().startsWith("ParkShopping Canoas"));
+        assertNull(EnderecoService.nomeJunto(new EnderecoRequest(null, "Rua de Teste", null, null, "Canoas", "RS", null, null)));
+        assertNull(EnderecoService.nomeJunto(new EnderecoRequest(null, "Shopping", null, null, "Canoas", "RS", null, null)));
+        assertNull(EnderecoService.nomeJunto(new EnderecoRequest(null, "Park Shopping", "10", null, "Canoas", "RS", null, null)));
+    }
+
+    @Test
     @DisplayName("Código IBGE sai da lista guardada no sistema mesmo com a API do IBGE fora do ar")
     void ibgePelaListaLocal() {
         EnderecoService comLista = new EnderecoService(viaCep, nominatim, ibge,

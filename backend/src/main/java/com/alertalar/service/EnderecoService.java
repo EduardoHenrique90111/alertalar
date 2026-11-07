@@ -153,12 +153,29 @@ public class EnderecoService {
                     + ", " + req.cidade() + " - " + req.estado() + ", Brasil";
             resultados = nominatim.buscarTexto(texto, 5);
         }
+        String nomeJunto = nomeJunto(req);
+        if (filtrar(resultados, req).isEmpty() && nomeJunto != null) {
+            // Nomes de lugares escritos separados ("Park Shopping") e cadastrados juntos ("ParkShopping")
+            resultados = nominatim.buscarTexto(nomeJunto + ", " + req.cidade() + " - " + req.estado() + ", Brasil", 5);
+        }
         fontes.registrarAcesso("NOMINATIM", Instant.now());
         return filtrar(resultados, req).stream()
                 .map(r -> new Candidato(r, precisao(r, req.numero())))
                 .sorted(Comparator.comparing((Candidato c) -> c.precisao() == null ? 9 : c.precisao().ordinal())
                         .thenComparing(c -> -c.r().placeRank()))
                 .toList();
+    }
+
+    /** "Park Shopping" → "ParkShopping" (só para nomes curtos, sem número, que não parecem endereço). */
+    static String nomeJunto(EnderecoRequest req) {
+        if (!Texto.vazio(req.numero()) || Texto.vazio(req.rua())) {
+            return null;
+        }
+        String[] palavras = req.rua().trim().split("\\s+");
+        if (palavras.length < 2 || palavras.length > 3 || req.rua().matches("(?i)^(rua|r\\.|avenida|av\\.?|travessa|estrada|rodovia)\\b.*")) {
+            return null;
+        }
+        return String.join("", palavras);
     }
 
     private static List<ResultadoGeocodificacao> filtrar(List<ResultadoGeocodificacao> resultados, EnderecoRequest req) {

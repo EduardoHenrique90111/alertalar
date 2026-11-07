@@ -475,3 +475,11 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 #bloco-destino { margin-top: var(--e-3); }
 .marcador-destino span { background: var(--verde); }
 .legenda-mapa .l-destino { background: var(--verde); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); width: 0.75rem; height: 0.75rem; }
+
+/* ---------------- Marcar no mapa (só quando a pessoa pede) ---------------- */
+.mapa-com-aviso { position: relative; }
+.aviso-marcacao { position: absolute; z-index: 1000; top: var(--e-3); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 6rem); display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2) var(--e-3); background: var(--azul-rio); color: var(--branco); border-radius: 8px; padding: var(--e-2) var(--e-3); box-shadow: var(--sombra-painel); font-weight: 600; }
+.aviso-marcacao .botao { background: var(--branco); }
+.mapa.marcando, .mapa.marcando .leaflet-interactive { cursor: crosshair; }
+.mapa.marcando { outline: 3px solid var(--azul-agua); outline-offset: 2px; }
+.partida .botao-link { margin-left: var(--e-2); font-size: var(--t-pequeno); white-space: nowrap; }
