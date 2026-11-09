@@ -1,0 +1,28 @@
+# =====================================================================
+#  AlertaLar no Render (plano gratuito, sem cartão)
+#  No Render: New > Blueprint > escolha este repositório.
+#  O Render pede só o DATABASE_URL: cole a connection string do Neon
+#  (postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require).
+#  Passo a passo: docs/publicar-no-render.md
+# =====================================================================
+services:
+  - type: web
+    name: alertalar
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: FORWARD_HEADERS_STRATEGY
+        value: framework
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE
+        value: "5"
+      - key: SPRING_DATASOURCE_HIKARI_MINIMUMIDLE
+        value: "1"

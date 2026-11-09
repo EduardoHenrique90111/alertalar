@@ -273,34 +273,48 @@ alertalar/
 
 ## Publicação na internet
 
-O GitHub guarda o código, mas não executa Java nem PostgreSQL (o GitHub Pages só publica
-sites estáticos). Para outras pessoas acessarem, o caminho gratuito sugerido é:
-**GitHub** (código) + **Render** (roda o Java pelo `Dockerfile`) + **Neon** (PostgreSQL).
+O GitHub guarda o código, mas não executa Java nem PostgreSQL. Dois caminhos gratuitos, os dois
+com o banco no **Neon** (PostgreSQL):
 
-1. **GitHub:** no IntelliJ, *Git → GitHub → Share Project on GitHub* (ou *VCS → Share Project
-   on GitHub*). O `.gitignore` impede o envio do `.env` com as senhas.
-2. **Neon** (neon.com): crie um projeto e copie a *connection string*, que tem o formato
-   `postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`.
-3. **Render** (render.com): *New → Web Service*, conecte o repositório do GitHub; o Render
-   detecta o `Dockerfile`. Escolha o plano *Free* e, em *Environment*, cadastre:
+- **Render**, sem cartão: o arquivo `render.yaml` cria o serviço (*New → Blueprint*) e só pede a
+  connection string do Neon (`DATABASE_URL`). O site dorme após 15 minutos sem visitas e leva de
+  1 a 3 minutos para acordar. Passo a passo: [docs/publicar-no-render.md](docs/publicar-no-render.md).
+- **Google Cloud Run**, com cartão (sem cobrança dentro do nível gratuito): liga em segundos e tem
+  bem mais CPU grátis. Passo a passo: [docs/publicar-no-google-cloud.md](docs/publicar-no-google-cloud.md).
 
-   | Variável | Valor |
-   |---|---|
-   | `DB_URL` | `jdbc:postgresql://HOST/BANCO?sslmode=require` (a string do Neon trocando `postgresql://USUARIO:SENHA@` por `jdbc:postgresql://`) |
-   | `DB_USERNAME` | USUARIO da string do Neon |
-   | `DB_PASSWORD` | SENHA da string do Neon |
-   | `ALERTALAR_ADMIN_EMAIL` / `ALERTALAR_ADMIN_SENHA` | administrador |
-   | `ALERTALAR_CONTATO_EMAIL` | e-mail de contato para as APIs públicas |
-   | `COOKIE_SECURE` | `true` |
-   | `FORWARD_HEADERS_STRATEGY` | `framework` |
+Resumo do Cloud Run:
 
-4. Após o deploy, o Render mostra o endereço público (`https://seu-app.onrender.com`).
-   Cada novo envio ao GitHub gera um novo deploy automaticamente.
+1. **Neon** (neon.com): crie um projeto e copie a *connection string*
+   (`postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`).
+2. **Google Cloud** (console.cloud.google.com): crie um projeto com faturamento ativo, abra o
+   **Cloud Shell**, envie o projeto (ou clone o repositório) e rode:
+
+   ```bash
+   bash implantar-cloud-run.sh
+   ```
+
+   O arquivo ativa os serviços, converte a connection string do Neon para as variáveis
+   `DB_URL`, `DB_USERNAME` e `DB_PASSWORD`, escolhe a região mais perto do banco, publica com no
+   máximo 2 instâncias e oferece um alerta de gastos por e-mail. No fim, mostra o endereço
+   público (`https://alertalar-....run.app`). Para publicar uma versão nova, rode de novo.
+
+Variáveis usadas em produção:
+
+| Variável | Valor |
+|---|---|
+| `DATABASE_URL` | connection string do Neon (`postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`), convertida sozinha para as três abaixo |
+| `DB_URL` | `jdbc:postgresql://HOST/BANCO?sslmode=require` (se definida, vale mais que `DATABASE_URL`) |
+| `DB_USERNAME` / `DB_PASSWORD` | usuário e senha do banco |
+| `ALERTALAR_ADMIN_EMAIL` / `ALERTALAR_ADMIN_SENHA` | administrador (só para criar) |
+| `ALERTALAR_CONTATO_EMAIL` | e-mail de contato para as APIs públicas |
+| `COOKIE_SECURE` | `true` |
+| `FORWARD_HEADERS_STRATEGY` | `framework` |
 
 Observações:
-- No plano gratuito do Render o serviço "dorme" após 15 minutos sem acesso; o primeiro acesso
-  seguinte demora cerca de 1 minuto. O PostgreSQL gratuito do próprio Render expira em 30 dias,
-  por isso a sugestão do Neon. Planos e limites mudam: confira nos sites antes de publicar.
+- O nível gratuito do Cloud Run inclui 180 mil segundos de CPU, 360 mil GiB-segundos de
+  memória e 2 milhões de requisições por mês, e só cobra CPU enquanto atende requisições.
+  O plano gratuito do Vercel (4 horas de CPU por mês) não comporta bem uma aplicação Java, que
+  gasta bastante CPU a cada vez que liga. Planos e limites mudam: confira nos sites.
 - Com tráfego alto, troque o Nominatim público e os blocos de mapa do OpenStreetMap por
   serviços próprios ou comerciais: as políticas de uso das instâncias públicas proíbem uso intenso.
 - O limitador de requisições é em memória; com várias instâncias, use um limitador distribuído.

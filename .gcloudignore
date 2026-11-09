@@ -1,0 +1,8 @@
+# Arquivos que NÃO são enviados ao Google Cloud ao publicar (gcloud run deploy --source .)
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+*.zip
+docs/
+database/
