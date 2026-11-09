@@ -59,8 +59,26 @@ public interface OcorrenciaRepository extends JpaRepository<Ocorrencia, Long> {
                                        @Param("origem") OrigemOcorrencia origem,
                                        Pageable pageable);
 
+    /**
+     * Moderação: só relatos de usuários (os registros oficiais não passam por moderação e são
+     * dezenas de milhares), com busca opcional por local, município, descrição ou relator.
+     * {@code buscaLike} já vem em minúsculas, com os curingas escapados por '!' e entre '%'.
+     */
     @EntityGraph(attributePaths = {"fonte"})
-    Page<Ocorrencia> findByStatusValidacao(StatusValidacao status, Pageable pageable);
+    @Query("""
+            select o from Ocorrencia o
+            where o.origem = com.alertalar.entity.enums.OrigemOcorrencia.RELATO_USUARIO
+              and o.statusValidacao = :status
+              and (:busca is null
+                   or lower(o.localizacao) like :busca escape '!'
+                   or lower(coalesce(o.municipio, '')) like :busca escape '!'
+                   or lower(o.descricao) like :busca escape '!'
+                   or lower(coalesce(o.nomeRelator, '')) like :busca escape '!'
+                   or lower(coalesce(o.contatoRelator, '')) like :busca escape '!')
+            """)
+    Page<Ocorrencia> listarRelatosParaModeracao(@Param("status") StatusValidacao status,
+                                                @Param("busca") String buscaLike,
+                                                Pageable pageable);
 
     long countByStatusValidacao(StatusValidacao status);
 }

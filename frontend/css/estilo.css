@@ -483,3 +483,9 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 .mapa.marcando, .mapa.marcando .leaflet-interactive { cursor: crosshair; }
 .mapa.marcando { outline: 3px solid var(--azul-agua); outline-offset: 2px; }
 .partida .botao-link { margin-left: var(--e-2); font-size: var(--t-pequeno); white-space: nowrap; }
+
+/* ---------------- Moderação: busca de relatos ---------------- */
+.busca-moderacao { margin: var(--e-4) 0 var(--e-2); max-width: 40rem; }
+.busca-moderacao label { display: block; margin-bottom: var(--e-1); }
+.busca-linha { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+.busca-linha input { flex: 1 1 16rem; }

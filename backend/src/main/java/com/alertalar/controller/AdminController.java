@@ -11,6 +11,7 @@ import com.alertalar.service.OcorrenciaService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,9 +49,10 @@ public class AdminController {
     @GetMapping("/ocorrencias")
     public PaginaResponse<OcorrenciaAdminResponse> listar(
             @RequestParam(defaultValue = "PENDENTE") StatusValidacao status,
+            @RequestParam(required = false) @Size(max = 100) String busca,
             @RequestParam(defaultValue = "0") @Min(0) int pagina,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamanho) {
-        return ocorrencias.listarParaModeracao(status, pagina, tamanho);
+        return ocorrencias.listarParaModeracao(status, busca, pagina, tamanho);
     }
 
     @PatchMapping("/ocorrencias/{id}/validacao")
