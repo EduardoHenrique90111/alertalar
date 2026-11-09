@@ -181,7 +181,7 @@ public class RotaSeguraService {
         }
         String descricao = "Destino escolhido, a " + formatarDistancia(distancia) + " em linha reta"
                 + (ganho == null ? "." : Math.abs(ganho) < 1 ? ", na mesma altura da partida."
-                : ", cerca de " + Math.round(Math.abs(ganho)) + " m mais " + (ganho > 0 ? "alto" : "baixo") + " que a partida.");
+                                         : ", cerca de " + Math.round(Math.abs(ganho)) + " m mais " + (ganho > 0 ? "alto" : "baixo") + " que a partida.");
         Destino destino = new Destino(latD, lonD, eD == null ? null : arred(eD), ganho == null ? null : arred(ganho),
                 Math.round(distancia), descricao, true);
 
@@ -260,6 +260,8 @@ public class RotaSeguraService {
         List<SetorRisco> hidrologicos = setoresHidrologicos(m, setores);
 
         if (!elevacoes.disponivel() || elevacoes.valor().isEmpty() || elevacoes.valor().get(0) == null) {
+            log.warn("Falha na consulta de altitude do terreno para {},{}. Dado disponível: {}",
+                    lat, lon, elevacoes.disponivel());
             return m.semRota("ROTA_INDISPONIVEL", new Ponto(lat, lon, null),
                     "Não foi possível obter a altura do terreno agora, então não dá para indicar um local mais alto. "
                             + "Tente novamente em instantes. Em emergência, ligue 199 (Defesa Civil) ou 193 (Bombeiros).");
@@ -306,7 +308,6 @@ public class RotaSeguraService {
                 continue; // muito perto de um destino que já falhou
             }
             testados.add(c);
-            // A partir do segundo ponto alto, a pessoa vê que outro destino está sendo testado
             String prefixo = testados.size() == 1 ? ""
                     : "testando outro ponto alto (" + testados.size() + " de " + MAX_DESTINOS_TESTADOS + "): ";
             Evitar evitar = poligonosAEvitar(hidrologicos, lat, lon, c);
@@ -435,7 +436,7 @@ public class RotaSeguraService {
         List<double[]> grade = new ArrayList<>();
         grade.add(new double[]{lat, lon});
         for (int a = 0; a < DISTANCIAS_METROS.length; a++) {
-            double defasagem = (a % 2 == 1) ? 360.0 / RUMOS / 2 : 0; // anéis alternados para cobrir melhor
+            double defasagem = (a % 2 == 1) ? 360.0 / RUMOS / 2 : 0;
             for (int r = 0; r < RUMOS; r++) {
                 grade.add(Geo.deslocar(lat, lon, DISTANCIAS_METROS[a], r * 360.0 / RUMOS + defasagem));
             }
@@ -558,7 +559,6 @@ public class RotaSeguraService {
         if (metros < 1000) {
             return Math.round(metros / 10.0) * 10 + " m";
         }
-        // "3 km" em vez de "3,0 km"
         return String.format(Locale.of("pt", "BR"), "%.1f km", metros / 1000).replace(",0 km", " km");
     }
 
@@ -641,7 +641,6 @@ public class RotaSeguraService {
                 progresso.informar(new ProgressoRota.Evento(etapa.name(), estado.name(), etapa.rotulo(destinoEscolhido),
                         etapa.fonte(), detalhe));
             } catch (RuntimeException e) {
-                // o andamento é só informativo: uma falha ao avisar a tela não interrompe o cálculo
                 log.debug("Falha ao informar andamento da rota: {}", e.getMessage());
             }
         }
