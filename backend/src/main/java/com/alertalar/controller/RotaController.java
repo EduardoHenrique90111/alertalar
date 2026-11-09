@@ -7,6 +7,7 @@ import com.alertalar.integration.valhalla.ModoRota;
 import com.alertalar.service.ProgressoRota;
 import com.alertalar.service.ProgressoRota.CalculoCanceladoException;
 import com.alertalar.service.RotaSeguraService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import org.slf4j.Logger;
@@ -81,8 +82,11 @@ public class RotaController implements DisposableBean {
                                          @RequestParam @DecimalMin("-74.2") @DecimalMax("-28.6") double lon,
                                          @RequestParam(defaultValue = "A_PE") ModoRota modo,
                                          @RequestParam(required = false) @DecimalMin("-34.0") @DecimalMax("5.5") Double destLat,
-                                         @RequestParam(required = false) @DecimalMin("-74.2") @DecimalMax("-28.6") Double destLon) {
+                                         @RequestParam(required = false) @DecimalMin("-74.2") @DecimalMax("-28.6") Double destLon,
+                                         HttpServletResponse resposta) {
         exigirDestinoCompleto(destLat, destLon);
+        // Pede aos proxies (ex.: Nginx) que repassem cada evento na hora, sem juntar tudo no fim
+        resposta.setHeader("X-Accel-Buffering", "no");
         if (destLat == null) {
             service.validarPartida(lat, lon);
         } else {

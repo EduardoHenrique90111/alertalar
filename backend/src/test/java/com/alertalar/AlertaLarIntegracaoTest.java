@@ -349,6 +349,7 @@ class AlertaLarIntegracaoTest {
 
         assertEquals(200, r.statusCode(), r.body());
         assertTrue(r.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream"));
+        assertEquals("no", r.headers().firstValue("X-Accel-Buffering").orElse(""));
         List<String[]> eventos = lerEventos(r.body());
         assertEquals("etapa", eventos.get(0)[0]);
         JsonNode primeira = json.readTree(eventos.get(0)[1]);
