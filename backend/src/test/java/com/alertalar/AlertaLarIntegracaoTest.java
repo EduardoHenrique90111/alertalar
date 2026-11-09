@@ -112,6 +112,7 @@ class AlertaLarIntegracaoTest {
                 "--alertalar.integracoes.sgb-setores-risco-url=" + apis.url("/sgb"),
                 "--alertalar.integracoes.rotas-url=" + apis.url("/valhalla"),
                 "--alertalar.integracoes.rotas-intervalo-minimo=10ms",
+                "--alertalar.limites.rotas-por-minuto=30",
                 "--logging.level.root=WARN");
         base = "http://127.0.0.1:" + app.getEnvironment().getProperty("local.server.port");
         historicoOficialMigrado = migracaoAplicada(url, usuario, senha, "4");
@@ -345,6 +346,45 @@ class AlertaLarIntegracaoTest {
     }
 
     @Test
+    @Order(13)
+    @DisplayName("Rota segura com andamento: etapas em tempo real, resultado e erros no formato da API")
+    void rotaSeguraComAndamento() throws Exception {
+        respostaSgb.set(RespostasSimuladas.sgbSemSetores());
+        HttpClient http = HttpClient.newHttpClient();
+        String caminho = "/api/rotas/segura/progresso?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON + "&modo=CARRO";
+        HttpResponse<String> r = http.send(pedidoEventos(caminho), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+        assertEquals(200, r.statusCode(), r.body());
+        assertTrue(r.headers().firstValue("Content-Type").orElse("").startsWith("text/event-stream"));
+        assertEquals("no", r.headers().firstValue("X-Accel-Buffering").orElse(""));
+        List<String[]> eventos = lerEventos(r.body());
+        assertEquals("etapa", eventos.get(0)[0]);
+        JsonNode primeira = json.readTree(eventos.get(0)[1]);
+        assertEquals("ALTURA", primeira.path("etapa").asString());
+        assertEquals("PENDENTE", primeira.path("estado").asString());
+        assertTrue(primeira.path("fonte").asString().contains("Copernicus"));
+        for (String etapa : List.of("ALTURA", "SETORES", "CAMINHO", "PERFIL")) {
+            assertTrue(eventos.stream().anyMatch(e -> e[1].contains("\"etapa\":\"" + etapa + "\"") && e[1].contains("\"CONCLUIDA\"")),
+                    etapa + " concluída: " + r.body());
+        }
+        String[] ultimo = eventos.get(eventos.size() - 1);
+        assertEquals("resultado", ultimo[0]);
+        JsonNode rota = json.readTree(ultimo[1]);
+        assertEquals("ROTA_ENCONTRADA", rota.path("status").asString(), ultimo[1]);
+        assertEquals("CARRO", rota.path("modo").asString());
+
+        // Parâmetros inválidos: recusados antes do andamento, com a resposta de erro comum da API
+        HttpResponse<String> fora = http.send(pedidoEventos("/api/rotas/segura/progresso?lat=40.7&lon=-74.0"),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertEquals(400, fora.statusCode());
+        assertTrue(fora.headers().firstValue("Content-Type").orElse("").contains("json"), fora.headers().toString());
+        HttpResponse<String> longe = http.send(pedidoEventos("/api/rotas/segura/progresso?lat=-29.92&lon=-51.18&destLat=-29.70&destLon=-51.18"),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertEquals(422, longe.statusCode(), longe.body());
+        assertTrue(json.readTree(longe.body()).path("detail").asString().contains("até 20 km"), longe.body());
+    }
+
+    @Test
     @Order(20)
     @DisplayName("Nominatim no limite de pedidos (429): o endereço é encontrado pelo Photon e ele fica em pausa")
     void reservaDaGeocodificacao() throws Exception {
@@ -413,6 +453,27 @@ class AlertaLarIntegracaoTest {
     }
 
     // ------------------------------------------------------------------ apoio
+
+    private HttpRequest pedidoEventos(String caminho) {
+        return HttpRequest.newBuilder(URI.create(base + caminho))
+                .header("Accept", "text/event-stream, application/problem+json").GET().build();
+    }
+
+    /** Eventos de um corpo text/event-stream: [nome, dados]. */
+    private static List<String[]> lerEventos(String corpo) {
+        List<String[]> eventos = new ArrayList<>();
+        for (String bloco : corpo.split("\\r?\\n\\r?\\n")) {
+            String nome = "message";
+            StringBuilder dados = new StringBuilder();
+            for (String linha : bloco.split("\\r?\\n")) {
+                if (linha.startsWith("event:")) nome = linha.substring(6).trim();
+                else if (linha.startsWith("data:")) dados.append(dados.isEmpty() ? "" : "\n").append(linha.substring(5).replaceFirst("^ ", ""));
+            }
+            if (!dados.isEmpty()) eventos.add(new String[]{nome, dados.toString()});
+        }
+        return eventos;
+    }
+
 
     private static boolean migracaoAplicada(String url, String usuario, String senha, String versao) {
         try (Connection con = DriverManager.getConnection(url, usuario, senha);

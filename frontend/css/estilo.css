@@ -484,6 +484,53 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 .mapa.marcando { outline: 3px solid var(--azul-agua); outline-offset: 2px; }
 .partida .botao-link { margin-left: var(--e-2); font-size: var(--t-pequeno); white-space: nowrap; }
 
+/* ---------------- Rota segura: andamento sobre o mapa ---------------- */
+/* Cada linha é uma consulta real (GPS, servidor, OpenStreetMap, SGB, Copernicus, Valhalla). */
+.progresso-mapa { position: absolute; z-index: 1000; right: var(--e-3); bottom: 1.6rem; width: min(26rem, calc(100% - 1.5rem)); max-height: calc(100% - 4.2rem); overflow-y: auto; overscroll-behavior: contain; background: rgba(255, 255, 255, 0.97); color: var(--azul-rio); border: 1.5px solid var(--azul-rio); border-radius: var(--raio); box-shadow: var(--sombra-painel); padding: var(--e-3) var(--e-4); font-size: var(--t-pequeno); line-height: 1.35; }
+.progresso-cabeca { display: flex; align-items: center; gap: var(--e-3); margin-bottom: var(--e-3); }
+.progresso-cabeca .botao { padding: 0.3rem 0.65rem; }
+.progresso-mapa .regua { --altura: 2.1rem; width: 1.2rem; border-width: 1.5px; border-radius: 3px; }
+.progresso-mapa .regua-agua { animation: subir 2.4s ease-in-out infinite; }
+.progresso-titulo { flex: 1; margin: 0; font-family: var(--fonte-titulo); font-weight: 800; font-size: var(--t-base); line-height: 1.2; }
+.progresso-tempo { font-family: var(--fonte-titulo); font-weight: 700; color: var(--cinza); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.progresso-etapas { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.progresso-etapa { display: grid; grid-template-columns: 1.05rem minmax(0, 1fr) auto; gap: var(--e-2); align-items: start; }
+.etapa-texto { display: flex; flex-direction: column; min-width: 0; }
+.etapa-rotulo { font-weight: 600; }
+.etapa-fonte, .etapa-detalhe { font-size: var(--t-menor); color: var(--cinza); overflow-wrap: anywhere; }
+.etapa-fonte { color: var(--azul-agua); font-weight: 600; }
+.etapa-fonte:empty, .etapa-detalhe:empty { display: none; }
+.etapa-tempo { font-size: var(--t-menor); color: var(--cinza); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 0.1rem; }
+.progresso-etapa[data-estado="PENDENTE"] { color: var(--cinza-claro); }
+.progresso-etapa[data-estado="PENDENTE"] .etapa-rotulo { font-weight: 400; }
+.etapa-icone { position: relative; width: 1.05rem; height: 1.05rem; margin-top: 0.08rem; border-radius: 50%; border: 2px solid var(--linha); }
+.progresso-etapa[data-estado="EM_ANDAMENTO"] .etapa-icone { border-color: var(--azul-claro); border-top-color: var(--azul-agua); border-right-color: var(--azul-agua); animation: girar 0.9s linear infinite; }
+.progresso-etapa[data-estado="CONCLUIDA"] .etapa-icone { background: var(--verde); border-color: var(--verde); }
+.progresso-etapa[data-estado="CONCLUIDA"] .etapa-icone::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid var(--branco); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.progresso-etapa[data-estado="FALHOU"] .etapa-icone { background: var(--amarelo); border-color: var(--amarelo); }
+.progresso-etapa[data-estado="FALHOU"] .etapa-icone::after { content: "!"; position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--fonte-titulo); font-weight: 800; font-size: 0.7rem; line-height: 1; color: var(--azul-rio); }
+@keyframes girar { to { transform: rotate(360deg); } }
+.progresso-demora, .progresso-erro { margin: 0 0 var(--e-3); padding: var(--e-2) var(--e-3); border-left: 4px solid var(--amarelo); background: var(--amarelo-claro); border-radius: 0 6px 6px 0; font-size: var(--t-menor); max-width: none; }
+.progresso-erro { margin: var(--e-3) 0 0; border-color: var(--vermelho); background: var(--vermelho-claro); font-size: var(--t-pequeno); }
+.progresso-acoes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--e-2); margin-top: var(--e-3); }
+.progresso-mapa.com-erro { border-color: var(--vermelho); }
+.progresso-mapa.com-erro .regua-agua { animation: none; height: 30%; }
+@media (max-width: 560px) {
+  .progresso-mapa { left: var(--e-2); right: var(--e-2); width: auto; bottom: 1.4rem; max-height: calc(100% - 2.2rem); padding: var(--e-2) var(--e-3); }
+  .progresso-cabeca { gap: var(--e-2); margin-bottom: var(--e-2); }
+  .progresso-mapa .regua { --altura: 1.8rem; width: 1rem; }
+  /* No celular, só o que já aconteceu e o que está acontecendo */
+  .progresso-etapa[data-estado="PENDENTE"] { display: none; }
+  .progresso-etapa[data-estado="CONCLUIDA"] .etapa-detalhe { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progresso-mapa .regua-agua { animation: none; height: 50%; }
+  .progresso-etapa[data-estado="EM_ANDAMENTO"] .etapa-icone { animation: none; border-color: var(--azul-agua); border-style: dotted; }
+}
+
+/* Blocos do mapa demorando para carregar */
+.aviso-blocos { max-width: 15rem; background: rgba(255, 255, 255, 0.95); color: var(--azul-rio); border: 1px solid var(--linha); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: var(--t-menor); font-weight: 600; line-height: 1.3; box-shadow: 0 1px 4px rgba(12, 38, 65, 0.25); }
+
 /* ---------------- Moderação: busca de relatos ---------------- */
 .busca-moderacao { margin: var(--e-4) 0 var(--e-2); max-width: 40rem; }
 .busca-moderacao label { display: block; margin-bottom: var(--e-1); }
