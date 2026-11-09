@@ -10,7 +10,6 @@ import com.alertalar.exception.IntegracaoExternaException;
 import com.alertalar.exception.PrecisaoInsuficienteException;
 import com.alertalar.integration.ibge.IbgeLocalidadesClient;
 import com.alertalar.integration.ibge.MunicipiosIbge;
-import com.alertalar.integration.nominatim.NominatimClient;
 import com.alertalar.integration.nominatim.NominatimClient.ResultadoGeocodificacao;
 import com.alertalar.integration.viacep.ViaCepClient;
 import com.alertalar.integration.viacep.ViaCepClient.DadosCep;
@@ -38,16 +37,16 @@ public class EnderecoService {
     private static final Logger log = LoggerFactory.getLogger(EnderecoService.class);
 
     private final ViaCepClient viaCep;
-    private final NominatimClient nominatim;
+    private final GeocodificacaoService geocodificacao;
     private final IbgeLocalidadesClient ibge;
     private final MunicipiosIbge municipios;
     private final EnderecoRepository repository;
     private final FonteDadosService fontes;
 
-    public EnderecoService(ViaCepClient viaCep, NominatimClient nominatim, IbgeLocalidadesClient ibge,
+    public EnderecoService(ViaCepClient viaCep, GeocodificacaoService geocodificacao, IbgeLocalidadesClient ibge,
                            MunicipiosIbge municipios, EnderecoRepository repository, FonteDadosService fontes) {
         this.viaCep = viaCep;
-        this.nominatim = nominatim;
+        this.geocodificacao = geocodificacao;
         this.ibge = ibge;
         this.municipios = municipios;
         this.repository = repository;
@@ -76,13 +75,13 @@ public class EnderecoService {
         boolean algumSuficiente = candidatos.stream().anyMatch(c -> c.precisao() != null);
         String mensagem = algumSuficiente
                 ? "Confira no mapa se o marcador está sobre o imóvel. Se não estiver, clique na posição correta."
-                : "Encontramos apenas a localização aproximada (bairro ou cidade). Clique no mapa sobre o imóvel "
-                  + "para confirmar a posição exata antes da análise.";
+                : "Encontramos apenas uma localização aproximada (bairro, cidade ou nome parecido). Clique no mapa "
+                  + "sobre o imóvel para confirmar a posição exata antes da análise.";
         return new LocalizacaoResponse(candidatos.stream().map(c -> new LocalizacaoResponse.Candidato(
                 c.r().latitude(), c.r().longitude(),
                 c.precisao() == null ? "APROXIMADA" : c.precisao().name(),
-                c.precisao() == null ? "Somente bairro/cidade: precisão insuficiente" : c.precisao().getDescricao(),
-                c.precisao() != null, c.r().nomeExibicao(), NominatimClient.FONTE)).toList(), mensagem);
+                c.precisao() == null ? "Localização aproximada: precisão insuficiente" : c.precisao().getDescricao(),
+                c.precisao() != null, c.r().nomeExibicao(), c.fonte())).toList(), mensagem);
     }
 
     /**
@@ -134,7 +133,7 @@ public class EnderecoService {
         e.setLatitude(melhor.r().latitude());
         e.setLongitude(melhor.r().longitude());
         e.setPrecisao(melhor.precisao());
-        e.setFonteGeocodificacao(NominatimClient.FONTE);
+        e.setFonteGeocodificacao(melhor.fonte());
         e.setChaveNormalizada(chave);
         try {
             return repository.save(e);
@@ -144,23 +143,14 @@ public class EnderecoService {
         }
     }
 
-    /** Candidatos ordenados do mais para o menos preciso, já filtrados por cidade/UF. */
+    /**
+     * Candidatos ordenados do mais para o menos preciso, já filtrados por cidade/UF. A busca vai ao
+     * Nominatim e, se ele recusar, não responder ou não achar, ao Photon (ver {@link GeocodificacaoService}).
+     */
     List<Candidato> geocodificar(EnderecoRequest req) {
-        List<ResultadoGeocodificacao> resultados = nominatim.buscarEstruturado(req.rua(), req.numero(), req.cidade(), req.estado(), 5);
-        if (filtrar(resultados, req).isEmpty()) {
-            String texto = req.rua() + (Texto.vazio(req.numero()) ? "" : ", " + req.numero())
-                    + (Texto.vazio(req.bairro()) ? "" : ", " + req.bairro())
-                    + ", " + req.cidade() + " - " + req.estado() + ", Brasil";
-            resultados = nominatim.buscarTexto(texto, 5);
-        }
-        String nomeJunto = nomeJunto(req);
-        if (filtrar(resultados, req).isEmpty() && nomeJunto != null) {
-            // Nomes de lugares escritos separados ("Park Shopping") e cadastrados juntos ("ParkShopping")
-            resultados = nominatim.buscarTexto(nomeJunto + ", " + req.cidade() + " - " + req.estado() + ", Brasil", 5);
-        }
-        fontes.registrarAcesso("NOMINATIM", Instant.now());
-        return filtrar(resultados, req).stream()
-                .map(r -> new Candidato(r, precisao(r, req.numero())))
+        GeocodificacaoService.Busca busca = geocodificacao.buscar(req, resultados -> filtrar(resultados, req));
+        return busca.resultados().stream()
+                .map(r -> new Candidato(r, precisao(r, req.numero()), busca.fonte()))
                 .sorted(Comparator.comparing((Candidato c) -> c.precisao() == null ? 9 : c.precisao().ordinal())
                         .thenComparing(c -> -c.r().placeRank()))
                 .toList();
@@ -265,6 +255,6 @@ public class EnderecoService {
                 + "posição do imóvel diretamente no mapa.";
     }
 
-    record Candidato(ResultadoGeocodificacao r, PrecisaoGeocodificacao precisao) {
+    record Candidato(ResultadoGeocodificacao r, PrecisaoGeocodificacao precisao, String fonte) {
     }
 }
