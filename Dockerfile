@@ -19,10 +19,12 @@ WORKDIR /app
 RUN useradd --system --uid 10001 alertalar
 COPY --from=build /app/backend/target/alertalar.jar app.jar
 USER alertalar
-# Usa no máximo 75% da memória do contêiner. TieredStopAtLevel=1 compila só no
-# nível rápido do Java: liga mais depressa e gasta bem menos CPU ao iniciar
-# (importante em serviços cobrados por CPU que desligam quando ninguém usa).
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xss512k"
+# Memória: 60% do contêiner para o heap e limites para o resto, para caber em
+# planos gratuitos de 512 MB (medido: cerca de 320 MB em uso).
+# TieredStopAtLevel=1 compila só no nível rápido do Java: liga mais depressa e
+# gasta cerca de 30% menos CPU ao iniciar (importa em serviços que desligam
+# quando ninguém usa e são cobrados ou limitados por CPU).
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xss512k -XX:ReservedCodeCacheSize=48m -XX:MaxMetaspaceSize=192m"
 # A porta vem da variável PORT definida pelo provedor (padrão 8080)
 EXPOSE 8080
 CMD ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

@@ -273,10 +273,16 @@ alertalar/
 
 ## Publicação na internet
 
-O GitHub guarda o código, mas não executa Java nem PostgreSQL. O caminho gratuito sugerido é
-**Google Cloud Run** (roda o Java pelo `Dockerfile` e desliga sozinho quando ninguém usa) +
-**Neon** (PostgreSQL). O passo a passo completo está em
-[docs/publicar-no-google-cloud.md](docs/publicar-no-google-cloud.md). Em resumo:
+O GitHub guarda o código, mas não executa Java nem PostgreSQL. Dois caminhos gratuitos, os dois
+com o banco no **Neon** (PostgreSQL):
+
+- **Render**, sem cartão: o arquivo `render.yaml` cria o serviço (*New → Blueprint*) e só pede a
+  connection string do Neon (`DATABASE_URL`). O site dorme após 15 minutos sem visitas e leva de
+  1 a 3 minutos para acordar. Passo a passo: [docs/publicar-no-render.md](docs/publicar-no-render.md).
+- **Google Cloud Run**, com cartão (sem cobrança dentro do nível gratuito): liga em segundos e tem
+  bem mais CPU grátis. Passo a passo: [docs/publicar-no-google-cloud.md](docs/publicar-no-google-cloud.md).
+
+Resumo do Cloud Run:
 
 1. **Neon** (neon.com): crie um projeto e copie a *connection string*
    (`postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`).
@@ -296,7 +302,8 @@ Variáveis usadas em produção:
 
 | Variável | Valor |
 |---|---|
-| `DB_URL` | `jdbc:postgresql://HOST/BANCO?sslmode=require` |
+| `DATABASE_URL` | connection string do Neon (`postgresql://USUARIO:SENHA@HOST/BANCO?sslmode=require`), convertida sozinha para as três abaixo |
+| `DB_URL` | `jdbc:postgresql://HOST/BANCO?sslmode=require` (se definida, vale mais que `DATABASE_URL`) |
 | `DB_USERNAME` / `DB_PASSWORD` | usuário e senha do banco |
 | `ALERTALAR_ADMIN_EMAIL` / `ALERTALAR_ADMIN_SENHA` | administrador (só para criar) |
 | `ALERTALAR_CONTATO_EMAIL` | e-mail de contato para as APIs públicas |
@@ -308,8 +315,6 @@ Observações:
   memória e 2 milhões de requisições por mês, e só cobra CPU enquanto atende requisições.
   O plano gratuito do Vercel (4 horas de CPU por mês) não comporta bem uma aplicação Java, que
   gasta bastante CPU a cada vez que liga. Planos e limites mudam: confira nos sites.
-- Também funciona no Render (*New → Web Service*, detecta o `Dockerfile`), mas no plano gratuito
-  o serviço dorme após 15 minutos sem acesso e leva cerca de 1 minuto para acordar.
 - Com tráfego alto, troque o Nominatim público e os blocos de mapa do OpenStreetMap por
   serviços próprios ou comerciais: as políticas de uso das instâncias públicas proíbem uso intenso.
 - O limitador de requisições é em memória; com várias instâncias, use um limitador distribuído.
