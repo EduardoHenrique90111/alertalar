@@ -46,9 +46,15 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /** Orquestra a consulta: endereço → coleta de dados → análise → persistência → resposta. */
 @Service
 public class ConsultaService {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(ConsultaService.class);
 
     private static final int MAX_CURSOS_NO_MAPA = 12;
 
@@ -74,9 +80,17 @@ public class ConsultaService {
      * para não prender conexões enquanto as APIs respondem.
      */
     public UUID realizar(EnderecoRequest request, Usuario usuario) {
+        log.info("Iniciando nova consulta de risco");
+
         Endereco endereco = enderecoService.resolverParaAnalise(request);
+        log.info("Endereço resolvido com sucesso");
+
         ContextoAnalise contexto = coleta.coletar(endereco);
+        log.info("Coleta de dados finalizada");
+
         ResultadoAnalise resultado = analise.analisar(contexto);
+        log.info("Análise concluída. Classificação: {}",
+                resultado.classificacao());
 
         Consulta consulta = new Consulta();
         consulta.setEndereco(endereco);
@@ -104,7 +118,11 @@ public class ConsultaService {
             f.setDataReferencia(a.dataReferencia());
             consulta.adicionarFator(f);
         }
-        return consultas.save(consulta).getId();
+        UUID id = consultas.save(consulta).getId();
+
+        log.info("Consulta registrada com sucesso. ID: {}", id);
+
+        return id;
     }
 
     @Transactional(readOnly = true)
