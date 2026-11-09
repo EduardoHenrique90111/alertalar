@@ -10,6 +10,7 @@ const anterior = document.getElementById('p-anterior');
 const proxima = document.getElementById('p-proxima');
 let status = 'PENDENTE';
 let pagina = 0;
+let busca = '';
 
 async function iniciar() {
   const u = await usuarioLogado();
@@ -31,18 +32,29 @@ async function atualizarContador() {
   } catch { /* contador é opcional */ }
 }
 
+let ultimoPedido = 0;
 async function carregar() {
+  const pedido = ++ultimoPedido;
   limpar(lista);
   lista.append(el('p', { class: 'vazio' }, 'Carregando…'));
   try {
-    const r = await api('/api/admin/ocorrencias', { params: { status, pagina, tamanho: 10 } });
+    const r = await api('/api/admin/ocorrencias', { params: { status, busca, pagina, tamanho: 10 } });
+    if (pedido !== ultimoPedido) return; // a pessoa já trocou de aba, de página ou de busca
     limpar(lista);
-    if (!r.itens.length) lista.append(el('p', { class: 'vazio' }, status === 'PENDENTE' ? 'Nenhum relato aguardando verificação.' : 'Nenhum relato nesta situação.'));
+    const nome = { PENDENTE: 'aguardando verificação', CONFIRMADA: 'confirmado(s)', REJEITADA: 'rejeitado(s)' }[status];
+    document.getElementById('p-total').textContent = busca
+      ? `${r.total} relato(s) ${nome} com "${busca}".`
+      : `${r.total} relato(s) ${nome}, do mais recente para o mais antigo.`;
+    if (!r.itens.length) {
+      lista.append(el('p', { class: 'vazio' }, busca ? 'Nenhum relato encontrado com essa busca nesta aba.'
+        : status === 'PENDENTE' ? 'Nenhum relato aguardando verificação.' : 'Nenhum relato nesta situação.'));
+    }
     r.itens.forEach((item) => lista.append(cartao(item)));
     document.getElementById('p-pagina').textContent = r.totalPaginas > 0 ? `Página ${r.pagina + 1} de ${r.totalPaginas}` : '';
     anterior.disabled = r.pagina <= 0;
     proxima.disabled = r.pagina + 1 >= r.totalPaginas;
   } catch (e) {
+    if (pedido !== ultimoPedido) return;
     limpar(lista);
     mensagem(lista, 'erro', e.message);
   }
@@ -76,9 +88,12 @@ function cartao(item) {
         + (item.contatoRelator ? ' (' + item.contatoRelator + ')' : '') + '.'),
       mapaLink,
       observacao),
+    // Só as decisões que mudam algo: um confirmado pode ser rejeitado, e um rejeitado, confirmado
     el('div', { class: 'acoes' },
-      el('button', { class: 'botao botao-pequeno', type: 'button', onclick: () => decidir('CONFIRMADA') }, 'Confirmar'),
-      el('button', { class: 'botao botao-perigo botao-pequeno', type: 'button', onclick: () => decidir('REJEITADA') }, 'Rejeitar')));
+      item.statusValidacao !== 'CONFIRMADA'
+        ? el('button', { class: 'botao botao-pequeno', type: 'button', onclick: () => decidir('CONFIRMADA') }, 'Confirmar') : null,
+      item.statusValidacao !== 'REJEITADA'
+        ? el('button', { class: 'botao botao-perigo botao-pequeno', type: 'button', onclick: () => decidir('REJEITADA') }, 'Rejeitar') : null));
 }
 
 document.querySelectorAll('.abas button').forEach((b) => b.addEventListener('click', () => {
@@ -88,6 +103,24 @@ document.querySelectorAll('.abas button').forEach((b) => b.addEventListener('cli
   limpar(msg);
   carregar();
 }));
+// Busca por rua, cidade, descrição ou relator (vale para a aba aberta)
+const formBusca = document.getElementById('p-busca');
+const botaoLimpar = document.getElementById('p-limpar');
+formBusca.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  busca = formBusca.busca.value.trim();
+  botaoLimpar.hidden = !busca;
+  pagina = 0;
+  limpar(msg);
+  carregar();
+});
+botaoLimpar.addEventListener('click', () => {
+  formBusca.busca.value = '';
+  busca = '';
+  botaoLimpar.hidden = true;
+  pagina = 0;
+  carregar();
+});
 anterior.addEventListener('click', () => { pagina = Math.max(0, pagina - 1); carregar(); });
 proxima.addEventListener('click', () => { pagina += 1; carregar(); });
 

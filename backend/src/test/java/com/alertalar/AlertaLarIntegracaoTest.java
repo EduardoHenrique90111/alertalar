@@ -20,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.net.CookieManager;
 import java.net.HttpCookie;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -63,6 +64,8 @@ class AlertaLarIntegracaoTest {
     private boolean historicoOficialMigrado;
     private final AtomicReference<String> respostaSgb = new AtomicReference<>(RespostasSimuladas.sgbSemSetores());
     private final AtomicReference<String> respostaNominatim = new AtomicReference<>(RespostasSimuladas.nominatimNumero());
+    /** 200 = responde normalmente; 429 = simula o limite de pedidos do Nominatim público. */
+    private final java.util.concurrent.atomic.AtomicInteger statusNominatim = new java.util.concurrent.atomic.AtomicInteger(200);
 
     @BeforeAll
     void subir() throws Exception {
@@ -73,7 +76,9 @@ class AlertaLarIntegracaoTest {
 
         apis = new ServidorHttpFalso()
                 .rota("/viacep/", Resposta.json(RespostasSimuladas.viaCep()))
-                .rota("/nominatim/search", r -> Resposta.json(respostaNominatim.get()))
+                .rota("/nominatim/search", r -> statusNominatim.get() == 200 ? Resposta.json(respostaNominatim.get())
+                        : new Resposta(statusNominatim.get(), "<html><body>Too Many Requests</body></html>", 0))
+                .rota("/photon/api", r -> Resposta.json(RespostasSimuladas.photon(r.parametro("q").replaceAll("\\D+", ""))))
                 .rota("/ibge/estados/RS/municipios", Resposta.json(RespostasSimuladas.ibgeMunicipiosRs()))
                 .rota("/overpass", Resposta.json(RespostasSimuladas.overpassComRioECorrego()))
                 .rota("/elevacao", r -> Resposta.json(RespostasSimuladas.elevacao(r.parametro("latitude").split(",").length)))
@@ -97,6 +102,8 @@ class AlertaLarIntegracaoTest {
                 "--alertalar.integracoes.viacep-url=" + apis.url("/viacep"),
                 "--alertalar.integracoes.nominatim-url=" + apis.url("/nominatim"),
                 "--alertalar.integracoes.nominatim-intervalo-minimo=10ms",
+                "--alertalar.integracoes.photon-url=" + apis.url("/photon"),
+                "--alertalar.integracoes.photon-intervalo-minimo=10ms",
                 "--alertalar.integracoes.ibge-url=" + apis.url("/ibge"),
                 "--alertalar.integracoes.overpass-url=" + apis.url("/overpass"),
                 "--alertalar.integracoes.elevacao-url=" + apis.url("/elevacao"),
@@ -375,6 +382,74 @@ class AlertaLarIntegracaoTest {
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         assertEquals(422, longe.statusCode(), longe.body());
         assertTrue(json.readTree(longe.body()).path("detail").asString().contains("até 20 km"), longe.body());
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("Nominatim no limite de pedidos (429): o endereço é encontrado pelo Photon e ele fica em pausa")
+    void reservaDaGeocodificacao() throws Exception {
+        statusNominatim.set(429);
+        try {
+            Cliente c = new Cliente();
+            long nominatimAntes = apis.contar("/nominatim/search");
+            JsonNode r = c.getJson("/api/enderecos/buscar?rua=Rua%20de%20Teste&numero=210&cidade=Canoas&estado=RS");
+            JsonNode melhor = r.path("candidatos").get(0);
+            assertEquals("Photon (OpenStreetMap)", melhor.path("fonte").asString(), r.toString());
+            assertEquals("NUMERO", melhor.path("precisao").asString());
+            assertTrue(melhor.path("suficienteParaAnalise").asBoolean());
+            assertEquals(1, apis.contar("/nominatim/search") - nominatimAntes, "uma recusa e o Nominatim entra em pausa");
+
+            // Durante a pausa, a consulta completa também funciona, sem insistir no Nominatim
+            HttpResponse<String> consulta = c.enviar("POST", "/api/consultas",
+                    "{\"rua\":\"Rua de Teste\",\"numero\":\"220\",\"cidade\":\"Canoas\",\"estado\":\"RS\"}", true);
+            assertEquals(201, consulta.statusCode(), consulta.body());
+            assertEquals("NUMERO", json.readTree(consulta.body()).path("endereco").path("precisao").asString());
+            assertEquals(1, apis.contar("/nominatim/search") - nominatimAntes);
+            assertTrue(new Cliente().getJson("/api/fontes").toString().contains("PHOTON"));
+        } finally {
+            statusNominatim.set(200);
+        }
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("Moderação: só relatos de usuários, do mais recente ao mais antigo, com busca; confirmado por engano pode ser rejeitado")
+    void moderacaoComBusca() throws Exception {
+        Cliente anonimo = new Cliente();
+        String relato = String.format(java.util.Locale.ROOT, """
+                {"localizacao":"Rua Dom João Becker, 1852","municipio":"Canoas","estado":"RS","dataOcorrencia":"2026-10-20",
+                 "descricao":"Só um teste, 100%% de água na rua.","tipoEvento":"ALAGAMENTO",
+                 "latitude":%.6f,"longitude":%.6f,"declaracaoVeracidade":true}""", RespostasSimuladas.LAT + 0.002, RespostasSimuladas.LON);
+        assertEquals(201, anonimo.enviar("POST", "/api/ocorrencias", relato, true).statusCode());
+        Cliente admin = new Cliente();
+        admin.login(ADMIN_EMAIL, ADMIN_SENHA);
+        long id = admin.getJson("/api/admin/ocorrencias?status=PENDENTE").path("itens").get(0).path("ocorrencia").path("id").asLong();
+        admin.enviar("PATCH", "/api/admin/ocorrencias/" + id + "/validacao", "{\"status\":\"CONFIRMADA\"}", true);
+        int publicasAntes = anonimo.getJson("/api/ocorrencias").path("total").asInt();
+
+        // Os registros oficiais (importados no teste anterior) não aparecem na moderação
+        JsonNode confirmados = admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA");
+        assertEquals(2, confirmados.path("total").asInt(), confirmados.toString());
+        for (JsonNode item : confirmados.path("itens").values()) {
+            assertEquals("RELATO_USUARIO", item.path("ocorrencia").path("origem").asString());
+        }
+        assertEquals(id, confirmados.path("itens").get(0).path("ocorrencia").path("id").asLong(), "o mais recente primeiro");
+
+        // Busca por rua (com acento), por contato do relator e com curinga digitado
+        JsonNode porRua = admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=" + URLEncoder.encode("dom JOÃO becker", StandardCharsets.UTF_8));
+        assertEquals(1, porRua.path("total").asInt(), porRua.toString());
+        assertEquals(id, porRua.path("itens").get(0).path("ocorrencia").path("id").asLong());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=morador%40exemplo").path("total").asInt());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=100%25").path("total").asInt(), "% é texto, não curinga");
+        assertEquals(0, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=_").path("total").asInt(), "_ é texto, não curinga");
+        assertEquals(400, admin.enviar("GET", "/api/admin/ocorrencias?busca=" + "x".repeat(101), null, false).statusCode());
+
+        // Confirmado por engano: rejeitar tira da lista pública
+        HttpResponse<String> rejeitado = admin.enviar("PATCH", "/api/admin/ocorrencias/" + id + "/validacao",
+                "{\"status\":\"REJEITADA\",\"observacao\":\"teste\"}", true);
+        assertEquals(200, rejeitado.statusCode(), rejeitado.body());
+        assertEquals(publicasAntes - 1, anonimo.getJson("/api/ocorrencias").path("total").asInt());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=REJEITADA").path("total").asInt());
     }
 
     // ------------------------------------------------------------------ apoio

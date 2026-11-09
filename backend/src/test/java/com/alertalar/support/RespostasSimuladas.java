@@ -43,6 +43,30 @@ public final class RespostasSimuladas {
                 """, LAT, LON);
     }
 
+    /**
+     * Resposta do Photon (komoot) no formato real (GeoJSON): um imóvel com número, a rua, um
+     * lugar (shopping) e um resultado fora do Brasil, que deve ser ignorado.
+     */
+    public static String photon(String numero) {
+        return String.format(Locale.ROOT, """
+                {"type":"FeatureCollection","features":[
+                 {"type":"Feature","geometry":{"type":"Point","coordinates":[%.6f,%.6f]},
+                  "properties":{"osm_type":"N","osm_id":101,"osm_key":"place","osm_value":"house","type":"house",
+                   "housenumber":"%s","street":"Rua de Teste","district":"Centro","city":"Canoas","county":"Região Metropolitana de Porto Alegre",
+                   "state":"Rio Grande do Sul","postcode":"92010-000","country":"Brasil","countrycode":"BR"}},
+                 {"type":"Feature","geometry":{"type":"Point","coordinates":[%.6f,%.6f]},
+                  "properties":{"osm_type":"W","osm_id":102,"osm_key":"highway","osm_value":"residential","type":"street",
+                   "name":"Rua de Teste","district":"Centro","city":"Canoas","state":"Rio Grande do Sul","country":"Brasil","countrycode":"BR"}},
+                 {"type":"Feature","geometry":{"type":"Point","coordinates":[-51.1834,-29.9178]},
+                  "properties":{"osm_type":"W","osm_id":103,"osm_key":"shop","osm_value":"mall","type":"house","name":"Canoas Shopping",
+                   "housenumber":"6750","street":"Avenida Guilherme Schell","district":"Centro","city":"Canoas","state":"Rio Grande do Sul",
+                   "postcode":"92310-000","country":"Brasil","countrycode":"BR"}},
+                 {"type":"Feature","geometry":{"type":"Point","coordinates":[-58.38,-34.60]},
+                  "properties":{"osm_key":"highway","osm_value":"residential","type":"street","name":"Rua de Teste","city":"Buenos Aires",
+                   "country":"Argentina","countrycode":"AR"}}]}
+                """, LON, LAT, numero, LON + 0.001, LAT + 0.001);
+    }
+
     public static String nominatimApenasRua() {
         return String.format(Locale.ROOT, """
                 [{"place_id":2,"lat":"%.6f","lon":"%.6f","category":"highway","type":"residential","place_rank":26,

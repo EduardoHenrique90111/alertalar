@@ -35,12 +35,21 @@
   <div id="p-conteudo" class="oculto">
     <section aria-labelledby="t-relatos">
       <h2 id="t-relatos">Relatos de moradores</h2>
-      <p class="texto-secundario">Confirme apenas relatos coerentes e plausíveis. Relatos confirmados passam a contar na análise de risco dos endereços próximos.</p>
+      <p class="texto-secundario">Confirme apenas relatos coerentes e plausíveis. Relatos confirmados passam a contar na análise de risco dos endereços próximos. Um relato confirmado por engano pode ser rejeitado depois, na aba Confirmados. Aqui aparecem só os relatos de usuários, dos mais recentes para os mais antigos; os registros oficiais não passam por moderação.</p>
       <div class="abas" role="group" aria-label="Filtrar por situação">
         <button type="button" data-status="PENDENTE" aria-pressed="true">Pendentes <span id="p-contador"></span></button>
         <button type="button" data-status="CONFIRMADA" aria-pressed="false">Confirmados</button>
         <button type="button" data-status="REJEITADA" aria-pressed="false">Rejeitados</button>
       </div>
+      <form id="p-busca" class="busca-moderacao" role="search">
+        <label for="p-termo">Buscar relato</label>
+        <div class="busca-linha">
+          <input id="p-termo" name="busca" type="search" maxlength="100" placeholder="Rua, cidade, descrição ou nome de quem enviou">
+          <button class="botao botao-pequeno" type="submit">Buscar</button>
+          <button class="botao botao-secundario botao-pequeno" type="button" id="p-limpar" hidden>Limpar</button>
+        </div>
+      </form>
+      <p id="p-total" class="dica" aria-live="polite"></p>
       <div id="p-msg" aria-live="polite"></div>
       <div id="p-lista"></div>
       <div class="paginacao">

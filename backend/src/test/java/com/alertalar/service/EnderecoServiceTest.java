@@ -11,6 +11,7 @@ import com.alertalar.integration.ibge.IbgeLocalidadesClient;
 import com.alertalar.integration.ibge.MunicipiosIbge;
 import com.alertalar.integration.nominatim.NominatimClient;
 import com.alertalar.integration.nominatim.NominatimClient.ResultadoGeocodificacao;
+import com.alertalar.integration.photon.PhotonClient;
 import com.alertalar.integration.viacep.ViaCepClient;
 import com.alertalar.integration.viacep.ViaCepClient.DadosCep;
 import com.alertalar.repository.EnderecoRepository;
@@ -44,6 +45,7 @@ class EnderecoServiceTest {
 
     @Mock ViaCepClient viaCep;
     @Mock NominatimClient nominatim;
+    @Mock PhotonClient photon;
     @Mock IbgeLocalidadesClient ibge;
     @Mock EnderecoRepository repository;
     @Mock FonteDadosService fontes;
@@ -52,7 +54,8 @@ class EnderecoServiceTest {
 
     @BeforeEach
     void preparar() {
-        servico = new EnderecoService(viaCep, nominatim, ibge, MunicipiosIbge.vazio(), repository, fontes);
+        servico = new EnderecoService(viaCep, new GeocodificacaoService(nominatim, photon, fontes), ibge,
+                MunicipiosIbge.vazio(), repository, fontes);
         lenient().when(repository.save(any(Endereco.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(repository.findByChaveNormalizada(anyString())).thenReturn(Optional.empty());
     }
@@ -160,7 +163,7 @@ class EnderecoServiceTest {
     @Test
     @DisplayName("Código IBGE sai da lista guardada no sistema mesmo com a API do IBGE fora do ar")
     void ibgePelaListaLocal() {
-        EnderecoService comLista = new EnderecoService(viaCep, nominatim, ibge,
+        EnderecoService comLista = new EnderecoService(viaCep, new GeocodificacaoService(nominatim, photon, fontes), ibge,
                 MunicipiosIbge.de(List.<String[]>of(new String[]{"4304606", "RS", "Canoas"},
                         new String[]{"4206702", "SC", "Herval D`Oeste"})),
                 repository, fontes);

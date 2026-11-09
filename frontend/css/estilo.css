@@ -530,3 +530,9 @@ legend { padding: 0; margin-bottom: var(--e-2); }
 
 /* Blocos do mapa demorando para carregar */
 .aviso-blocos { max-width: 15rem; background: rgba(255, 255, 255, 0.95); color: var(--azul-rio); border: 1px solid var(--linha); border-radius: 6px; padding: 0.3rem 0.6rem; font-size: var(--t-menor); font-weight: 600; line-height: 1.3; box-shadow: 0 1px 4px rgba(12, 38, 65, 0.25); }
+
+/* ---------------- Moderação: busca de relatos ---------------- */
+.busca-moderacao { margin: var(--e-4) 0 var(--e-2); max-width: 40rem; }
+.busca-moderacao label { display: block; margin-bottom: var(--e-1); }
+.busca-linha { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+.busca-linha input { flex: 1 1 16rem; }

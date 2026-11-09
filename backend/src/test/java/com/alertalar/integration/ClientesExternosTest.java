@@ -4,6 +4,7 @@ import com.alertalar.exception.IntegracaoExternaException;
 import com.alertalar.integration.http.LimitadorIntervalo;
 import com.alertalar.integration.ibge.IbgeLocalidadesClient;
 import com.alertalar.integration.nominatim.NominatimClient;
+import com.alertalar.integration.photon.PhotonClient;
 import com.alertalar.integration.nominatim.NominatimClient.ResultadoGeocodificacao;
 import com.alertalar.integration.openmeteo.ClimaClient;
 import com.alertalar.integration.openmeteo.ElevacaoClient;
@@ -66,6 +67,36 @@ class ClientesExternosTest {
         // segunda consulta do mesmo CEP vem do cache
         cliente.buscar("92010000");
         assertEquals(1, servidor.contar("/ws/92010000/"));
+    }
+
+    @Test
+    @DisplayName("Photon (reserva do Nominatim): busca só no Brasil, converte GeoJSON e ignora outros países")
+    void photon() {
+        servidor.rota("/api", Resposta.json(RespostasSimuladas.photon("100")));
+        PhotonClient cliente = new PhotonClient(Clientes.http(), servidor.url(""), new LimitadorIntervalo(Duration.ofMillis(10)));
+
+        List<ResultadoGeocodificacao> r = cliente.buscar("Rua de Teste 100, Canoas, Rio Grande do Sul", 10);
+
+        assertEquals(3, r.size(), "o resultado da Argentina fica de fora");
+        ResultadoGeocodificacao casa = r.get(0);
+        assertEquals(RespostasSimuladas.LAT, casa.latitude(), 1e-9);
+        assertEquals(RespostasSimuladas.LON, casa.longitude(), 1e-9);
+        assertEquals(30, casa.placeRank());
+        assertEquals("100", casa.numero());
+        assertEquals("Rua de Teste", casa.rua());
+        assertEquals("Centro", casa.bairro());
+        assertEquals("Canoas", casa.cidade());
+        assertEquals("RS", casa.uf());
+        assertEquals("100, Rua de Teste, Centro, Canoas, Rio Grande do Sul, 92010-000, Brasil", casa.nomeExibicao());
+        assertEquals(26, r.get(1).placeRank(), "a própria rua");
+        assertEquals("Rua de Teste", r.get(1).rua());
+        assertTrue(r.get(2).nomeExibicao().startsWith("Canoas Shopping, 6750, Avenida Guilherme Schell"));
+        var req = servidor.recebidas().get(0);
+        assertEquals("/api", req.caminho());
+        assertEquals("Rua de Teste 100, Canoas, Rio Grande do Sul", req.parametro("q"));
+        assertEquals("-74.2,-34.0,-28.6,5.5", req.parametro("bbox"));
+        assertEquals("10", req.parametro("limit"));
+        assertTrue(req.cabecalho("User-Agent").startsWith("AlertaLar"));
     }
 
     @Test
