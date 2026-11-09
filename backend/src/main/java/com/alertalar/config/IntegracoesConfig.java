@@ -7,6 +7,7 @@ import com.alertalar.integration.nominatim.NominatimClient;
 import com.alertalar.integration.openmeteo.ClimaClient;
 import com.alertalar.integration.openmeteo.ElevacaoClient;
 import com.alertalar.integration.overpass.OverpassClient;
+import com.alertalar.integration.photon.PhotonClient;
 import com.alertalar.integration.s2id.LeitorRegistrosOficiaisCsv;
 import com.alertalar.integration.sgb.SgbSetoresRiscoClient;
 import com.alertalar.integration.valhalla.ValhallaClient;
@@ -53,6 +54,13 @@ public class IntegracoesConfig {
     public NominatimClient nominatimClient(ClienteHttpExterno http, AlertaLarProperties props) {
         return new NominatimClient(http, props.integracoes().nominatimUrl(), props.contatoEmail(),
                 new LimitadorIntervalo(props.integracoes().nominatimIntervaloMinimo()));
+    }
+
+    /** Reserva do Nominatim (mesmos dados do OpenStreetMap, outro servidor). */
+    @Bean
+    public PhotonClient photonClient(ClienteHttpExterno http, AlertaLarProperties props) {
+        return new PhotonClient(http, props.integracoes().photonUrl(),
+                new LimitadorIntervalo(props.integracoes().photonIntervaloMinimo()));
     }
 
     @Bean

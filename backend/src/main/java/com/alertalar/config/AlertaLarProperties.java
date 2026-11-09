@@ -14,16 +14,27 @@ import java.util.List;
 public record AlertaLarProperties(
         @DefaultValue("") String contatoEmail,
         @DefaultValue("AlertaLar/1.0") String nomeAplicacao,
+        @DefaultValue("") String urlPublica,
         @DefaultValue Admin admin,
         @DefaultValue Cors cors,
         @DefaultValue Integracoes integracoes,
         @DefaultValue Analise analise,
         @DefaultValue Limites limites) {
 
-    /** User-Agent identificável, exigido pelas políticas de uso do Nominatim e do OSM. */
+    /**
+     * User-Agent identificável, exigido pelas políticas de uso do Nominatim e do OSM:
+     * "AlertaLar/1.0 (+https://alertalar.onrender.com; contato@...)". O endereço do site vem de
+     * ALERTALAR_URL_PUBLICA ou, no Render, da variável RENDER_EXTERNAL_URL que ele mesmo define.
+     */
     public String userAgent() {
-        String contato = (contatoEmail == null || contatoEmail.isBlank()) ? "" : " (" + contatoEmail + ")";
-        return nomeAplicacao + contato;
+        List<String> partes = new java.util.ArrayList<>();
+        if (urlPublica != null && !urlPublica.isBlank()) {
+            partes.add("+" + urlPublica.trim());
+        }
+        if (contatoEmail != null && !contatoEmail.isBlank()) {
+            partes.add(contatoEmail.trim());
+        }
+        return partes.isEmpty() ? nomeAplicacao : nomeAplicacao + " (" + String.join("; ", partes) + ")";
     }
 
     public record Admin(@DefaultValue("Administrador") String nome,
@@ -49,7 +60,9 @@ public record AlertaLarProperties(
             String sgbSetoresRiscoUrl,
             @DefaultValue("https://valhalla1.openstreetmap.de") String rotasUrl,
             @DefaultValue("") String rotasChaveApi,
-            @DefaultValue("1100ms") Duration rotasIntervaloMinimo) {
+            @DefaultValue("1100ms") Duration rotasIntervaloMinimo,
+            @DefaultValue("https://photon.komoot.io") String photonUrl,
+            @DefaultValue("1100ms") Duration photonIntervaloMinimo) {
     }
 
     public record Analise(@DefaultValue("1500") int raioCursosAguaMetros,

@@ -86,8 +86,10 @@ form.addEventListener('submit', async (ev) => {
     if (e instanceof ErroApi && e.status === 400) {
       mostrarErrosCampos(form, e.erros);
       mensagem(msgEndereco, 'erro', e.message);
-    } else if (e.status === 404) {
-      const caixa = mensagem(msgEndereco, 'atencao', e.message, 'Endereço não localizado');
+    } else if (e.status === 404 || e.status === 503) {
+      // Não achou, ou a busca de endereços está fora do ar: a pessoa ainda pode marcar no mapa
+      const caixa = mensagem(msgEndereco, 'atencao', e.message,
+        e.status === 404 ? 'Endereço não localizado' : 'Busca de endereços indisponível agora');
       const marcar = document.createElement('button');
       marcar.type = 'button';
       marcar.className = 'botao botao-secundario botao-pequeno';

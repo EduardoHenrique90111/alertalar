@@ -38,7 +38,7 @@ fonte não responde ou não cobre a região, o fator aparece como indisponível 
 | Banco de dados | PostgreSQL, Hibernate/JPA, Flyway (migrations) |
 | Front-end | HTML5, CSS3, JavaScript puro (módulos ES), Leaflet 1.9.4 + OpenStreetMap |
 | Testes | JUnit 5/6 (Jupiter) e Mockito |
-| Integrações | ViaCEP, Nominatim (OSM), IBGE Localidades, Overpass (OSM), Open-Meteo (elevação Copernicus, chuva, vazão GloFAS), SGB (setores de risco), Valhalla (rotas sobre o OSM); base do Atlas Digital de Desastres embutida e importação de planilhas do S2iD |
+| Integrações | ViaCEP, Nominatim (OSM) com o Photon (OSM) de reserva, IBGE Localidades, Overpass (OSM), Open-Meteo (elevação Copernicus, chuva, vazão GloFAS), SGB (setores de risco), Valhalla (rotas sobre o OSM); base do Atlas Digital de Desastres embutida e importação de planilhas do S2iD |
 
 Fontes tipográficas (Overpass e Public Sans, licença OFL) e Leaflet ficam dentro do projeto:
 o front-end não depende de CDN.
@@ -76,6 +76,7 @@ Edite o `.env` (ele fica fora do Git):
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Conexão com o PostgreSQL |
 | `ALERTALAR_ADMIN_EMAIL`, `ALERTALAR_ADMIN_SENHA` | Cria o administrador (moderação e importação). Senha com 10+ caracteres, letras e números |
 | `ALERTALAR_CONTATO_EMAIL` | Contato enviado às APIs públicas (pedido pela política do Nominatim) |
+| `ALERTALAR_URL_PUBLICA` | Endereço do site, enviado no User-Agent para as APIs públicas identificarem o AlertaLar. No Render é preenchido sozinho (`RENDER_EXTERNAL_URL`) |
 | `PORT` | Porta HTTP (padrão 8080) |
 | `COOKIE_SECURE`, `FORWARD_HEADERS_STRATEGY` | Use `true` e `framework` quando publicar com HTTPS atrás de proxy |
 | `ROTAS_URL`, `ROTAS_CHAVE_API` | Opcional. Servidor de rotas compatível com o Valhalla (padrão: servidor público da FOSSGIS, sem chave) |
@@ -90,8 +91,13 @@ A rota segura usa o servidor público do Valhalla mantido pela FOSSGIS
 (`valhalla1.openstreetmap.de`), que aceita no máximo uma requisição por segundo; o AlertaLar
 respeita esse intervalo e limita cada visitante a 10 rotas por minuto. Para uso intenso, aponte
 `ROTAS_URL` para uma instância própria ou um provedor compatível (com `ROTAS_CHAVE_API`).
-Os endereços podem ser trocados por variáveis (`NOMINATIM_URL`, `OVERPASS_URL` etc., veja o
-`.env.example`), por exemplo para usar uma instância própria do Nominatim. Detalhes, limites
+A busca de endereços usa o Nominatim público. Ele limita os pedidos por IP, e em hospedagens
+compartilhadas (como o plano gratuito do Render) esse limite pode ser atingido por outros sites
+do mesmo IP: quando o Nominatim recusa (HTTP 429 ou 403) ou não responde, a busca segue na hora
+no Photon (komoot), que usa os mesmos dados do OpenStreetMap, e o Nominatim fica alguns minutos
+em pausa. Se os dois estiverem fora do ar, a tela oferece marcar a posição direto no mapa.
+Os endereços podem ser trocados por variáveis (`NOMINATIM_URL`, `PHOTON_URL`, `OVERPASS_URL`
+etc., veja o `.env.example`), por exemplo para usar uma instância própria do Nominatim. Detalhes, limites
 de uso e situação de cada fonte: [docs/fontes-de-dados.md](docs/fontes-de-dados.md).
 
 ## Como iniciar o back-end
@@ -167,7 +173,7 @@ cd backend
 mvn test
 ```
 
-Há 154 testes (JUnit + Mockito): validação de endereços, geocodificação, código IBGE, fatores e
+Há 171 testes (JUnit + Mockito): validação de endereços, geocodificação (com a reserva do Photon quando o Nominatim recusa pedidos), código IBGE, fatores e
 classificação de risco, risco agora (níveis de chuva do INMET e combinação com a
 suscetibilidade), processamento da consulta, registro e moderação de ocorrências, importação de
 planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
@@ -315,7 +321,7 @@ Observações:
   memória e 2 milhões de requisições por mês, e só cobra CPU enquanto atende requisições.
   O plano gratuito do Vercel (4 horas de CPU por mês) não comporta bem uma aplicação Java, que
   gasta bastante CPU a cada vez que liga. Planos e limites mudam: confira nos sites.
-- Com tráfego alto, troque o Nominatim público e os blocos de mapa do OpenStreetMap por
+- Com tráfego alto, troque o Nominatim e o Photon públicos e os blocos de mapa do OpenStreetMap por
   serviços próprios ou comerciais: as políticas de uso das instâncias públicas proíbem uso intenso.
 - O limitador de requisições é em memória; com várias instâncias, use um limitador distribuído.
 - Para rodar o JAR em qualquer servidor: `java -jar alertalar.jar` com Java 21 e as mesmas variáveis.

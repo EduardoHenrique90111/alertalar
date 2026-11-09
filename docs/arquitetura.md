@@ -26,7 +26,7 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
 | `repository` | Spring Data JPA. |
 | `entity` | Entidades JPA e enums. |
 | `dto` | Entrada e saída da API (records). |
-| `integration` | Clientes de ViaCEP, Nominatim, IBGE, Overpass, Open-Meteo, SGB, Valhalla (rotas) e leitor de CSV do S2iD. `ClienteHttpExterno` centraliza tempo limite, User-Agent e tratamento de falhas. |
+| `integration` | Clientes de ViaCEP, Nominatim, Photon, IBGE, Overpass, Open-Meteo, SGB, Valhalla (rotas) e leitor de CSV do S2iD. `ClienteHttpExterno` centraliza tempo limite, User-Agent e tratamento de falhas. |
 | `config` | Propriedades, segurança, limitador de requisições, criação do administrador. `config/migracao` guarda migrations Java do Flyway (carga da base oficial do Atlas Digital). |
 | `ferramentas` | Utilitário de linha de comando que gera a base compacta do Atlas Digital (`PrepararBaseAtlas`); não roda com a aplicação. |
 | `exception` | Exceções de negócio e `GlobalExceptionHandler` (Problem Details, RFC 9457). |
@@ -35,8 +35,14 @@ O próprio back-end serve o front-end (pasta `frontend/`), então tudo roda em
 ## Fluxo de uma consulta
 
 1. O usuário informa o endereço; o CEP preenche o formulário (ViaCEP).
-2. `GET /api/enderecos/buscar` geocodifica (Nominatim) e devolve candidatos com a precisão
+2. `GET /api/enderecos/buscar` geocodifica e devolve candidatos com a precisão
    (`NUMERO`, `RUA` ou aproximada). O usuário confirma ou ajusta a posição no mapa.
+   `GeocodificacaoService` tenta o Nominatim (estruturado, texto livre, nome junto); se ele
+   recusar (429/403), falhar ou não achar, tenta o Photon. Uma recusa põe o Nominatim em pausa
+   (o tempo do `Retry-After`, entre 1 e 30 min; 5 min sem ele; 30 min para 403; 1 min para
+   falhas passageiras), e nesse tempo o Photon vem primeiro. Resultado do Photon cujo nome não
+   bate com o digitado vale só como posição aproximada. Endereços encontrados ficam 24 h em
+   memória. Se nenhum dos dois responder, a API devolve 503 e a tela oferece marcar no mapa.
 3. `POST /api/consultas`:
    - `EnderecoService` resolve o ponto (precisão mínima: rua; ou posição confirmada no mapa);
    - `ColetaDadosService` consulta em paralelo (threads virtuais) Overpass e SGB, depois a

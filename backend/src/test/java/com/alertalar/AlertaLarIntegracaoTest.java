@@ -63,6 +63,8 @@ class AlertaLarIntegracaoTest {
     private boolean historicoOficialMigrado;
     private final AtomicReference<String> respostaSgb = new AtomicReference<>(RespostasSimuladas.sgbSemSetores());
     private final AtomicReference<String> respostaNominatim = new AtomicReference<>(RespostasSimuladas.nominatimNumero());
+    /** 200 = responde normalmente; 429 = simula o limite de pedidos do Nominatim público. */
+    private final java.util.concurrent.atomic.AtomicInteger statusNominatim = new java.util.concurrent.atomic.AtomicInteger(200);
 
     @BeforeAll
     void subir() throws Exception {
@@ -73,7 +75,9 @@ class AlertaLarIntegracaoTest {
 
         apis = new ServidorHttpFalso()
                 .rota("/viacep/", Resposta.json(RespostasSimuladas.viaCep()))
-                .rota("/nominatim/search", r -> Resposta.json(respostaNominatim.get()))
+                .rota("/nominatim/search", r -> statusNominatim.get() == 200 ? Resposta.json(respostaNominatim.get())
+                        : new Resposta(statusNominatim.get(), "<html><body>Too Many Requests</body></html>", 0))
+                .rota("/photon/api", r -> Resposta.json(RespostasSimuladas.photon(r.parametro("q").replaceAll("\\D+", ""))))
                 .rota("/ibge/estados/RS/municipios", Resposta.json(RespostasSimuladas.ibgeMunicipiosRs()))
                 .rota("/overpass", Resposta.json(RespostasSimuladas.overpassComRioECorrego()))
                 .rota("/elevacao", r -> Resposta.json(RespostasSimuladas.elevacao(r.parametro("latitude").split(",").length)))
@@ -97,6 +101,8 @@ class AlertaLarIntegracaoTest {
                 "--alertalar.integracoes.viacep-url=" + apis.url("/viacep"),
                 "--alertalar.integracoes.nominatim-url=" + apis.url("/nominatim"),
                 "--alertalar.integracoes.nominatim-intervalo-minimo=10ms",
+                "--alertalar.integracoes.photon-url=" + apis.url("/photon"),
+                "--alertalar.integracoes.photon-intervalo-minimo=10ms",
                 "--alertalar.integracoes.ibge-url=" + apis.url("/ibge"),
                 "--alertalar.integracoes.overpass-url=" + apis.url("/overpass"),
                 "--alertalar.integracoes.elevacao-url=" + apis.url("/elevacao"),
@@ -335,6 +341,33 @@ class AlertaLarIntegracaoTest {
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=40.7&lon=-74.0", null, false).statusCode(), "fora do Brasil");
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9&lon=-51.1&modo=AVIAO", null, false).statusCode());
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9", null, false).statusCode());
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("Nominatim no limite de pedidos (429): o endereço é encontrado pelo Photon e ele fica em pausa")
+    void reservaDaGeocodificacao() throws Exception {
+        statusNominatim.set(429);
+        try {
+            Cliente c = new Cliente();
+            long nominatimAntes = apis.contar("/nominatim/search");
+            JsonNode r = c.getJson("/api/enderecos/buscar?rua=Rua%20de%20Teste&numero=210&cidade=Canoas&estado=RS");
+            JsonNode melhor = r.path("candidatos").get(0);
+            assertEquals("Photon (OpenStreetMap)", melhor.path("fonte").asString(), r.toString());
+            assertEquals("NUMERO", melhor.path("precisao").asString());
+            assertTrue(melhor.path("suficienteParaAnalise").asBoolean());
+            assertEquals(1, apis.contar("/nominatim/search") - nominatimAntes, "uma recusa e o Nominatim entra em pausa");
+
+            // Durante a pausa, a consulta completa também funciona, sem insistir no Nominatim
+            HttpResponse<String> consulta = c.enviar("POST", "/api/consultas",
+                    "{\"rua\":\"Rua de Teste\",\"numero\":\"220\",\"cidade\":\"Canoas\",\"estado\":\"RS\"}", true);
+            assertEquals(201, consulta.statusCode(), consulta.body());
+            assertEquals("NUMERO", json.readTree(consulta.body()).path("endereco").path("precisao").asString());
+            assertEquals(1, apis.contar("/nominatim/search") - nominatimAntes);
+            assertTrue(new Cliente().getJson("/api/fontes").toString().contains("PHOTON"));
+        } finally {
+            statusNominatim.set(200);
+        }
     }
 
     // ------------------------------------------------------------------ apoio
