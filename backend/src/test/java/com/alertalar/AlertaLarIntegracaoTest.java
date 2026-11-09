@@ -20,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.net.CookieManager;
 import java.net.HttpCookie;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -368,6 +369,47 @@ class AlertaLarIntegracaoTest {
         } finally {
             statusNominatim.set(200);
         }
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("Moderação: só relatos de usuários, do mais recente ao mais antigo, com busca; confirmado por engano pode ser rejeitado")
+    void moderacaoComBusca() throws Exception {
+        Cliente anonimo = new Cliente();
+        String relato = String.format(java.util.Locale.ROOT, """
+                {"localizacao":"Rua Dom João Becker, 1852","municipio":"Canoas","estado":"RS","dataOcorrencia":"2026-10-20",
+                 "descricao":"Só um teste, 100%% de água na rua.","tipoEvento":"ALAGAMENTO",
+                 "latitude":%.6f,"longitude":%.6f,"declaracaoVeracidade":true}""", RespostasSimuladas.LAT + 0.002, RespostasSimuladas.LON);
+        assertEquals(201, anonimo.enviar("POST", "/api/ocorrencias", relato, true).statusCode());
+        Cliente admin = new Cliente();
+        admin.login(ADMIN_EMAIL, ADMIN_SENHA);
+        long id = admin.getJson("/api/admin/ocorrencias?status=PENDENTE").path("itens").get(0).path("ocorrencia").path("id").asLong();
+        admin.enviar("PATCH", "/api/admin/ocorrencias/" + id + "/validacao", "{\"status\":\"CONFIRMADA\"}", true);
+        int publicasAntes = anonimo.getJson("/api/ocorrencias").path("total").asInt();
+
+        // Os registros oficiais (importados no teste anterior) não aparecem na moderação
+        JsonNode confirmados = admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA");
+        assertEquals(2, confirmados.path("total").asInt(), confirmados.toString());
+        for (JsonNode item : confirmados.path("itens").values()) {
+            assertEquals("RELATO_USUARIO", item.path("ocorrencia").path("origem").asString());
+        }
+        assertEquals(id, confirmados.path("itens").get(0).path("ocorrencia").path("id").asLong(), "o mais recente primeiro");
+
+        // Busca por rua (com acento), por contato do relator e com curinga digitado
+        JsonNode porRua = admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=" + URLEncoder.encode("dom JOÃO becker", StandardCharsets.UTF_8));
+        assertEquals(1, porRua.path("total").asInt(), porRua.toString());
+        assertEquals(id, porRua.path("itens").get(0).path("ocorrencia").path("id").asLong());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=morador%40exemplo").path("total").asInt());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=100%25").path("total").asInt(), "% é texto, não curinga");
+        assertEquals(0, admin.getJson("/api/admin/ocorrencias?status=CONFIRMADA&busca=_").path("total").asInt(), "_ é texto, não curinga");
+        assertEquals(400, admin.enviar("GET", "/api/admin/ocorrencias?busca=" + "x".repeat(101), null, false).statusCode());
+
+        // Confirmado por engano: rejeitar tira da lista pública
+        HttpResponse<String> rejeitado = admin.enviar("PATCH", "/api/admin/ocorrencias/" + id + "/validacao",
+                "{\"status\":\"REJEITADA\",\"observacao\":\"teste\"}", true);
+        assertEquals(200, rejeitado.statusCode(), rejeitado.body());
+        assertEquals(publicasAntes - 1, anonimo.getJson("/api/ocorrencias").path("total").asInt());
+        assertEquals(1, admin.getJson("/api/admin/ocorrencias?status=REJEITADA").path("total").asInt());
     }
 
     // ------------------------------------------------------------------ apoio

@@ -173,7 +173,7 @@ cd backend
 mvn test
 ```
 
-Há 171 testes (JUnit + Mockito): validação de endereços, geocodificação (com a reserva do Photon quando o Nominatim recusa pedidos), código IBGE, fatores e
+Há 173 testes (JUnit + Mockito): validação de endereços, geocodificação (com a reserva do Photon quando o Nominatim recusa pedidos), código IBGE, fatores e
 classificação de risco, risco agora (níveis de chuva do INMET e combinação com a
 suscetibilidade), processamento da consulta, registro e moderação de ocorrências, importação de
 planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
