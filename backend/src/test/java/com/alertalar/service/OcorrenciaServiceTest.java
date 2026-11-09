@@ -134,4 +134,13 @@ class OcorrenciaServiceTest {
     void foraDoBrasil() {
         assertThrows(RegraNegocioException.class, () -> servico.registrarRelato(relato(40.0, -74.0), null));
     }
+
+    @Test
+    @DisplayName("Busca da moderação: texto em minúsculas, entre %, sem virar curinga")
+    void padraoDaBusca() {
+        assertEquals("%dom joão%", OcorrenciaService.padraoBusca("  Dom   João "));
+        assertEquals("%100!% de água!_x!!%", OcorrenciaService.padraoBusca("100% de água_x!"));
+        assertEquals(null, OcorrenciaService.padraoBusca("   "));
+        assertEquals(null, OcorrenciaService.padraoBusca(null));
+    }
 }

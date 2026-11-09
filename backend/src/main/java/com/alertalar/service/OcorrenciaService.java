@@ -101,11 +101,28 @@ public class OcorrenciaService {
                 .toList();
     }
 
+    /**
+     * Relatos de usuários para a moderação, do mais recente para o mais antigo, com busca opcional
+     * (local, município, descrição, nome ou contato do relator). Registros oficiais ficam de fora.
+     */
     @Transactional(readOnly = true)
-    public PaginaResponse<OcorrenciaAdminResponse> listarParaModeracao(StatusValidacao status, int pagina, int tamanho) {
+    public PaginaResponse<OcorrenciaAdminResponse> listarParaModeracao(StatusValidacao status, String busca, int pagina,
+                                                                       int tamanho) {
         PageRequest page = PageRequest.of(Math.max(0, pagina), Math.clamp(tamanho, 1, TAMANHO_MAXIMO_PAGINA),
-                Sort.by(Sort.Direction.ASC, "dataRegistro"));
-        return PaginaResponse.de(repository.findByStatusValidacao(status, page), OcorrenciaAdminResponse::de);
+                Sort.by(Sort.Direction.DESC, "dataRegistro").and(Sort.by(Sort.Direction.DESC, "id")));
+        return PaginaResponse.de(repository.listarRelatosParaModeracao(status, padraoBusca(busca), page),
+                OcorrenciaAdminResponse::de);
+    }
+
+    /** "Dom João" → "%dom joão%", com %, _ e ! escapados (o texto digitado nunca vira curinga). */
+    static String padraoBusca(String busca) {
+        String limpo = Texto.limpar(busca);
+        if (limpo == null) {
+            return null;
+        }
+        String escapado = limpo.toLowerCase(java.util.Locale.ROOT)
+                .replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        return "%" + escapado + "%";
     }
 
     @Transactional
