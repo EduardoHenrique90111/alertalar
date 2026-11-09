@@ -71,6 +71,24 @@ na consulta seguinte.
 4. Confere o caminho: setores atravessados e perfil de altura em 60 pontos (aviso quando algum
    trecho fica mais de 2 m abaixo da partida). O resultado fica 15 min em cache.
 
+### Andamento em tempo real
+
+`GET /api/rotas/segura/progresso` faz o mesmo cálculo e envia, por Server-Sent Events
+(`SseEmitter`), um evento `etapa` a cada consulta externa que começa, termina ou falha
+(`ProgressoRota`): primeiro o plano com as 4 etapas pendentes (ALTURA, SETORES, CAMINHO, PERFIL),
+depois `EM_ANDAMENTO`, `CONCLUIDA` ou `FALHOU`, com o nome do serviço consultado e um detalhe
+("desviando de 2 áreas de risco", "1,2 km pelas ruas"). O último evento é `resultado` (a mesma
+`RotaSeguraResponse`) ou `erro` (`{status, title, detail}`). Parâmetros inválidos são recusados
+antes do andamento, com a resposta de erro comum. O cálculo roda numa thread virtual e tem até
+3 minutos; se a pessoa cancelar ou fechar a página, o próximo envio falha e o serviço para antes
+da próxima chamada ao Valhalla ou ao Open-Meteo (nada vai para o cache).
+
+No front-end, `js/progresso.js` desenha o painel sobre o mapa e `apiComAndamento` (em
+`js/api.js`) lê os eventos com `fetch` e `ReadableStream`, o que permite cancelar com
+`AbortController`. O painel também mostra as etapas do próprio navegador: GPS, busca do
+endereço (Nominatim) e a espera pelo servidor, que no plano gratuito do Render pode levar cerca
+de 1 minuto para acordar. Cada etapa tem um tempo a partir do qual aparece o aviso de demora.
+
 ## Metodologia (versão 1.0)
 
 | Fator | Categoria | Peso | Pontuação (0–3) |

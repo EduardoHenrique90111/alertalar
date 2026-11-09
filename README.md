@@ -167,11 +167,11 @@ cd backend
 mvn test
 ```
 
-Há 154 testes (JUnit + Mockito): validação de endereços, geocodificação, código IBGE, fatores e
+Há 167 testes (JUnit + Mockito): validação de endereços, geocodificação, código IBGE, fatores e
 classificação de risco, risco agora (níveis de chuva do INMET e combinação com a
 suscetibilidade), processamento da consulta, registro e moderação de ocorrências, importação de
 planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
-perfil de altura), tratamento de erros, segurança e comunicação HTTP com as APIs externas
+perfil de altura, andamento em tempo real e cancelamento), tratamento de erros, segurança e comunicação HTTP com as APIs externas
 (contra um servidor local que responde no mesmo formato das APIs reais).
 
 O teste de **ponta a ponta** (`AlertaLarIntegracaoTest`) sobe a aplicação inteira com
@@ -213,6 +213,7 @@ em português e, em erros de validação, o campo `erros` por campo.
 | GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
 | GET | `/api/situacao-atual?lat=&lon=&consulta=` | público | Chuva (72 h passadas e 72 h previstas), vazão e risco agora; `consulta` (opcional, UUID) usa a suscetibilidade daquela consulta |
 | GET | `/api/rotas/segura?lat=&lon=&modo=A_PE&destLat=&destLon=` | público | Caminho até o terreno mais alto fora de áreas de risco ou, com `destLat`/`destLon`, até um destino escolhido (até 20 km), desviando das áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
+| GET | `/api/rotas/segura/progresso?` (mesmos parâmetros) | público | A mesma rota, em `text/event-stream`: eventos `etapa` (altura do terreno, áreas de risco, caminho, perfil, com a fonte consultada e o estado), depois `resultado` (a mesma resposta acima) ou `erro`. Usado pelo painel de andamento sobre o mapa; fechar a conexão interrompe o cálculo |
 | POST | `/api/auth/registro` | público | Cria conta e já entra |
 | POST | `/api/auth/login` | público | Entra (sessão) |
 | POST | `/api/auth/logout` | logado | Sai |

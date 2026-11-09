@@ -15,6 +15,9 @@ import com.alertalar.integration.sgb.SgbSetoresRiscoClient.SetorRisco;
 import com.alertalar.integration.valhalla.ModoRota;
 import com.alertalar.integration.valhalla.ValhallaClient;
 import com.alertalar.integration.valhalla.ValhallaClient.Rota;
+import com.alertalar.service.ProgressoRota.CalculoCanceladoException;
+import com.alertalar.service.ProgressoRota.Estado;
+import com.alertalar.service.ProgressoRota.Etapa;
 import com.alertalar.service.analise.Dado;
 import com.alertalar.util.Geo;
 import org.slf4j.Logger;
@@ -83,15 +86,36 @@ public class RotaSeguraService {
     }
 
     public RotaSeguraResponse calcular(double lat, double lon, ModoRota modo) {
-        if (!Geo.dentroDoBrasil(lat, lon)) {
-            throw new RegraNegocioException("O ponto de partida precisa estar no território brasileiro.");
-        }
+        return calcular(lat, lon, modo, ProgressoRota.NENHUM);
+    }
+
+    /** Rota até o terreno mais alto, avisando o andamento de cada consulta externa. */
+    public RotaSeguraResponse calcular(double lat, double lon, ModoRota modo, ProgressoRota progresso) {
+        validarPartida(lat, lon);
         String chave = String.format(Locale.ROOT, "%.4f,%.4f,%s", lat, lon, modo);
-        return cache.obterOuCalcular(chave, () -> calcularSemCache(lat, lon, modo));
+        return cache.obterOuCalcular(chave, () -> calcularSemCache(lat, lon, modo, progresso));
     }
 
     /** Rota segura até um destino escolhido pela pessoa (endereço, local ou ponto no mapa). */
     public RotaSeguraResponse calcularAte(double lat, double lon, double latDestino, double lonDestino, ModoRota modo) {
+        return calcularAte(lat, lon, latDestino, lonDestino, modo, ProgressoRota.NENHUM);
+    }
+
+    public RotaSeguraResponse calcularAte(double lat, double lon, double latDestino, double lonDestino, ModoRota modo,
+                                          ProgressoRota progresso) {
+        validarDestino(lat, lon, latDestino, lonDestino);
+        String chave = String.format(Locale.ROOT, "%.4f,%.4f>%.4f,%.4f,%s", lat, lon, latDestino, lonDestino, modo);
+        return cache.obterOuCalcular(chave, () -> calcularAteSemCache(lat, lon, latDestino, lonDestino, modo, progresso));
+    }
+
+    /** Confere a partida antes de começar (o erro volta como resposta comum, não no meio do andamento). */
+    public void validarPartida(double lat, double lon) {
+        if (!Geo.dentroDoBrasil(lat, lon)) {
+            throw new RegraNegocioException("O ponto de partida precisa estar no território brasileiro.");
+        }
+    }
+
+    public void validarDestino(double lat, double lon, double latDestino, double lonDestino) {
         if (!Geo.dentroDoBrasil(lat, lon) || !Geo.dentroDoBrasil(latDestino, lonDestino)) {
             throw new RegraNegocioException("A partida e o destino precisam estar no território brasileiro.");
         }
@@ -103,24 +127,31 @@ public class RotaSeguraService {
             throw new RegraNegocioException("O destino está a " + formatarDistancia(distancia) + " em linha reta. A rota "
                     + "segura calcula caminhos de até 20 km; escolha um destino mais perto.");
         }
-        String chave = String.format(Locale.ROOT, "%.4f,%.4f>%.4f,%.4f,%s", lat, lon, latDestino, lonDestino, modo);
-        return cache.obterOuCalcular(chave, () -> calcularAteSemCache(lat, lon, latDestino, lonDestino, modo));
     }
 
     RotaSeguraResponse calcularAteSemCache(double lat, double lon, double latD, double lonD, ModoRota modo) {
+        return calcularAteSemCache(lat, lon, latD, lonD, modo, ProgressoRota.NENHUM);
+    }
+
+    RotaSeguraResponse calcularAteSemCache(double lat, double lon, double latD, double lonD, ModoRota modo,
+                                           ProgressoRota progresso) {
         double distancia = Geo.distanciaMetros(lat, lon, latD, lonD);
         int raio = (int) Math.min(12_000, distancia / 2 + 1_500);
         double latMeio = (lat + latD) / 2;
         double lonMeio = (lon + lonD) / 2;
         List<double[]> pontos = List.of(new double[]{lat, lon}, new double[]{latD, lonD});
-        CompletableFuture<Dado<List<Double>>> futuroElevacao =
-                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> elevacao.elevacoes(pontos)), executor);
-        CompletableFuture<Dado<List<SetorRisco>>> futuroSetores =
-                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> sgb.buscarProximos(latMeio, lonMeio, raio)), executor);
+        Andamento a = new Andamento(progresso, true);
+        a.plano();
+        a.iniciar(Etapa.ALTURA, "partida e destino");
+        a.iniciar(Etapa.SETORES, "num raio de " + formatarDistancia(raio) + " em volta do trajeto");
+        CompletableFuture<Dado<List<Double>>> futuroElevacao = CompletableFuture.supplyAsync(
+                () -> a.terminarAltura(Dado.coletar(() -> elevacao.elevacoes(pontos))), executor);
+        CompletableFuture<Dado<List<SetorRisco>>> futuroSetores = CompletableFuture.supplyAsync(
+                () -> a.terminarSetores(Dado.coletar(() -> sgb.buscarProximos(latMeio, lonMeio, raio))), executor);
         Dado<List<Double>> elevacoes = futuroElevacao.join();
         Dado<List<SetorRisco>> setores = futuroSetores.join();
 
-        Montador m = new Montador(modo);
+        Montador m = new Montador(modo, a);
         List<SetorRisco> hidrologicos = setoresHidrologicos(m, setores);
         Double e0 = null;
         Double eD = null;
@@ -159,13 +190,17 @@ public class RotaSeguraService {
         Rota rota = null;
         boolean desvioAplicado = true;
         if (!evitar.aneis().isEmpty()) {
-            rota = tentarRota(lat, lon, alvo, modo, evitar.aneis());
+            a.iniciar(Etapa.CAMINHO, detalheDesvio(evitar));
+            rota = tentarRota(a, lat, lon, alvo, modo, evitar.aneis());
         }
         if (rota == null) {
-            rota = tentarRota(lat, lon, alvo, modo, List.of());
+            a.iniciar(Etapa.CAMINHO, evitar.aneis().isEmpty() ? detalheDesvio(evitar)
+                    : "nova tentativa, sem o desvio (a anterior não deu certo)");
+            rota = tentarRota(a, lat, lon, alvo, modo, List.of());
             desvioAplicado = evitar.aneis().isEmpty();
         }
         if (rota == null) {
+            a.falhar(Etapa.CAMINHO, "o serviço de rotas não conseguiu traçar o caminho agora");
             m.destino = destino;
             return m.semRota("ROTA_INDISPONIVEL", origem, "O serviço de rotas não conseguiu traçar o caminho até o destino "
                     + "agora. Tente novamente em instantes.");
@@ -205,15 +240,23 @@ public class RotaSeguraService {
     }
 
     RotaSeguraResponse calcularSemCache(double lat, double lon, ModoRota modo) {
+        return calcularSemCache(lat, lon, modo, ProgressoRota.NENHUM);
+    }
+
+    RotaSeguraResponse calcularSemCache(double lat, double lon, ModoRota modo, ProgressoRota progresso) {
         List<double[]> grade = gradeDeBusca(lat, lon);
-        CompletableFuture<Dado<List<Double>>> futuroElevacao =
-                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> elevacao.elevacoes(grade)), executor);
-        CompletableFuture<Dado<List<SetorRisco>>> futuroSetores =
-                CompletableFuture.supplyAsync(() -> Dado.coletar(() -> sgb.buscarProximos(lat, lon, RAIO_SETORES)), executor);
+        Andamento a = new Andamento(progresso, false);
+        a.plano();
+        a.iniciar(Etapa.ALTURA, grade.size() + " pontos num raio de " + formatarDistancia(DISTANCIAS_METROS[DISTANCIAS_METROS.length - 1]));
+        a.iniciar(Etapa.SETORES, "num raio de " + formatarDistancia(RAIO_SETORES));
+        CompletableFuture<Dado<List<Double>>> futuroElevacao = CompletableFuture.supplyAsync(
+                () -> a.terminarAltura(Dado.coletar(() -> elevacao.elevacoes(grade))), executor);
+        CompletableFuture<Dado<List<SetorRisco>>> futuroSetores = CompletableFuture.supplyAsync(
+                () -> a.terminarSetores(Dado.coletar(() -> sgb.buscarProximos(lat, lon, RAIO_SETORES))), executor);
         Dado<List<Double>> elevacoes = futuroElevacao.join();
         Dado<List<SetorRisco>> setores = futuroSetores.join();
 
-        Montador m = new Montador(modo);
+        Montador m = new Montador(modo, a);
         List<SetorRisco> hidrologicos = setoresHidrologicos(m, setores);
 
         if (!elevacoes.disponivel() || elevacoes.valor().isEmpty() || elevacoes.valor().get(0) == null) {
@@ -263,16 +306,22 @@ public class RotaSeguraService {
                 continue; // muito perto de um destino que já falhou
             }
             testados.add(c);
+            // A partir do segundo ponto alto, a pessoa vê que outro destino está sendo testado
+            String prefixo = testados.size() == 1 ? ""
+                    : "testando outro ponto alto (" + testados.size() + " de " + MAX_DESTINOS_TESTADOS + "): ";
             Evitar evitar = poligonosAEvitar(hidrologicos, lat, lon, c);
             Rota rota = null;
             boolean desvioAplicado = true;
             if (!evitar.aneis().isEmpty()) {
                 chamadas++;
-                rota = tentarRota(lat, lon, c, modo, evitar.aneis());
+                a.iniciar(Etapa.CAMINHO, prefixo + detalheDesvio(evitar));
+                rota = tentarRota(a, lat, lon, c, modo, evitar.aneis());
             }
             if (rota == null && chamadas < MAX_CHAMADAS_ROTEADOR) {
                 chamadas++;
-                rota = tentarRota(lat, lon, c, modo, List.of());
+                a.iniciar(Etapa.CAMINHO, prefixo + (evitar.aneis().isEmpty() ? detalheDesvio(evitar)
+                        : "nova tentativa, sem o desvio (a anterior não deu certo)"));
+                rota = tentarRota(a, lat, lon, c, modo, List.of());
                 desvioAplicado = evitar.aneis().isEmpty();
             }
             if (rota != null) {
@@ -285,6 +334,7 @@ public class RotaSeguraService {
                         "até um terreno cerca de " + Math.round(c.ganho()) + " m mais alto que o ponto de partida.");
             }
         }
+        a.falhar(Etapa.CAMINHO, "o serviço de rotas não conseguiu traçar o caminho agora");
         Candidato melhor = candidatos.get(0);
         m.destino = destino(lat, lon, melhor);
         return m.semRota("ROTA_INDISPONIVEL", origem,
@@ -294,7 +344,8 @@ public class RotaSeguraService {
                         + "Tente novamente em instantes ou use o mapa como referência.");
     }
 
-    private Rota tentarRota(double lat, double lon, Candidato c, ModoRota modo, List<List<double[]>> evitar) {
+    private Rota tentarRota(Andamento a, double lat, double lon, Candidato c, ModoRota modo, List<List<double[]>> evitar) {
+        a.verificarCancelamento();
         try {
             return roteador.rota(lat, lon, c.lat(), c.lon(), modo, evitar);
         } catch (IntegracaoExternaException e) {
@@ -310,6 +361,7 @@ public class RotaSeguraService {
     private RotaSeguraResponse montarComRota(Montador m, Ponto origem, Double e0, Destino destino, Rota rota,
                                              boolean desvioAplicado, int setoresEvitados, List<SetorRisco> hidrologicos,
                                              List<SetorRisco> setoresConhecidos, String finalMensagem) {
+        m.andamento.concluir(Etapa.CAMINHO, formatarDistancia(rota.distanciaMetros()) + " pelas ruas");
         m.destino = destino;
         List<RotaSeguraResponse.Instrucao> instrucoes = rota.instrucoes().stream()
                 .filter(i -> i.texto() != null)
@@ -333,7 +385,12 @@ public class RotaSeguraService {
 
         // Perfil de elevação do caminho
         List<double[]> amostras = Geo.amostrar(rota.pontos(), AMOSTRAS_PERFIL);
+        m.andamento.verificarCancelamento();
+        m.andamento.iniciar(Etapa.PERFIL, amostras.size() + " pontos do caminho");
         Dado<List<Double>> elevPerfil = Dado.coletar(() -> elevacao.elevacoes(amostras.stream().map(a -> new double[]{a[0], a[1]}).toList()));
+        if (!elevPerfil.disponivel()) {
+            m.andamento.falhar(Etapa.PERFIL, "não foi possível conferir agora; o caminho continua valendo");
+        }
         if (elevPerfil.disponivel()) {
             List<double[]> perfil = new ArrayList<>();
             double min = Double.MAX_VALUE;
@@ -353,7 +410,10 @@ public class RotaSeguraService {
                 }
                 max = Math.max(max, e);
             }
-            if (pontoMin != null) {
+            if (pontoMin == null) {
+                m.andamento.falhar(Etapa.PERFIL, "o serviço não trouxe a altura dos pontos; o caminho continua valendo");
+            } else {
+                m.andamento.concluir(Etapa.PERFIL, "trecho mais baixo a " + Math.round(min) + " m de altitude");
                 m.perfil = new Perfil(arred(min), arred(max), Math.round(distMin), pontoMin, perfil);
                 if (e0 != null && min < e0 - TOLERANCIA_TRECHO_BAIXO && distMin > 50) {
                     m.avisos.add("Atenção: a cerca de " + Math.round(distMin) + " m do início, o caminho passa por um trecho "
@@ -498,7 +558,8 @@ public class RotaSeguraService {
         if (metros < 1000) {
             return Math.round(metros / 10.0) * 10 + " m";
         }
-        return String.format(Locale.of("pt", "BR"), "%.1f km", metros / 1000);
+        // "3 km" em vez de "3,0 km"
+        return String.format(Locale.of("pt", "BR"), "%.1f km", metros / 1000).replace(",0 km", " km");
     }
 
     static String formatarTempo(double segundos) {
@@ -510,9 +571,86 @@ public class RotaSeguraService {
         return Math.round(v * 10) / 10.0;
     }
 
+    static String detalheDesvio(Evitar evitar) {
+        int n = evitar.aneis().size();
+        if (n == 0) {
+            return "traçando o caminho";
+        }
+        return "desviando de " + n + (n == 1 ? " área" : " áreas") + " de risco";
+    }
+
+    /** Envia o andamento das etapas para quem acompanha o cálculo (a tela, via {@link ProgressoRota}). */
+    static final class Andamento {
+        private final ProgressoRota progresso;
+        private final boolean destinoEscolhido;
+
+        Andamento(ProgressoRota progresso, boolean destinoEscolhido) {
+            this.progresso = progresso;
+            this.destinoEscolhido = destinoEscolhido;
+        }
+
+        /** Todas as etapas como pendentes, para a tela já mostrar o que vem pela frente. */
+        void plano() {
+            for (Etapa e : Etapa.values()) {
+                informar(e, Estado.PENDENTE, null);
+            }
+        }
+
+        void iniciar(Etapa etapa, String detalhe) {
+            informar(etapa, Estado.EM_ANDAMENTO, detalhe);
+        }
+
+        void concluir(Etapa etapa, String detalhe) {
+            informar(etapa, Estado.CONCLUIDA, detalhe);
+        }
+
+        void falhar(Etapa etapa, String detalhe) {
+            informar(etapa, Estado.FALHOU, detalhe);
+        }
+
+        Dado<List<Double>> terminarAltura(Dado<List<Double>> d) {
+            long comAltura = d.disponivel() ? d.valor().stream().filter(java.util.Objects::nonNull).count() : 0;
+            if (comAltura == 0) {
+                falhar(Etapa.ALTURA, "o serviço de altitude não respondeu");
+            } else {
+                concluir(Etapa.ALTURA, comAltura + (comAltura == 1 ? " ponto analisado" : " pontos analisados"));
+            }
+            return d;
+        }
+
+        Dado<List<SetorRisco>> terminarSetores(Dado<List<SetorRisco>> d) {
+            if (!d.disponivel()) {
+                falhar(Etapa.SETORES, "o serviço não respondeu; o caminho não vai desviar das áreas de risco");
+                return d;
+            }
+            long n = d.valor().stream().filter(SetorRisco::hidrologico).count();
+            concluir(Etapa.SETORES, n == 0 ? "nenhuma área de risco de inundação mapeada"
+                    : n + (n == 1 ? " área de risco de inundação encontrada" : " áreas de risco de inundação encontradas"));
+            return d;
+        }
+
+        /** Para o cálculo se a pessoa desistiu, antes de mais uma consulta externa. */
+        void verificarCancelamento() {
+            if (progresso.cancelado()) {
+                throw new CalculoCanceladoException();
+            }
+        }
+
+        private void informar(Etapa etapa, Estado estado, String detalhe) {
+            try {
+                progresso.informar(new ProgressoRota.Evento(etapa.name(), estado.name(), etapa.rotulo(destinoEscolhido),
+                        etapa.fonte(), detalhe));
+            } catch (RuntimeException e) {
+                // o andamento é só informativo: uma falha ao avisar a tela não interrompe o cálculo
+                log.debug("Falha ao informar andamento da rota: {}", e.getMessage());
+            }
+        }
+    }
+
     /** Acumula as partes da resposta. */
     private static final class Montador {
         final ModoRota modo;
+        final Andamento andamento;
         final List<String> avisos = new ArrayList<>();
         final List<String> fontes = new ArrayList<>();
         final List<SetorMapa> setores = new ArrayList<>();
@@ -521,8 +659,9 @@ public class RotaSeguraService {
         Trajeto trajeto;
         Perfil perfil;
 
-        Montador(ModoRota modo) {
+        Montador(ModoRota modo, Andamento andamento) {
             this.modo = modo;
+            this.andamento = andamento;
         }
 
         private List<String> avisosFinais() {

@@ -342,7 +342,164 @@ class RotaSeguraServiceTest {
         assertThrows(RegraNegocioException.class, () -> service.calcular(40.7, -74.0, ModoRota.A_PE));
         assertEquals("250 m", RotaSeguraService.formatarDistancia(247));
         assertEquals("1,2 km", RotaSeguraService.formatarDistancia(1234));
+        assertEquals("3 km", RotaSeguraService.formatarDistancia(3000));
         assertEquals("1 min", RotaSeguraService.formatarTempo(20));
         assertEquals("1 h 5 min", RotaSeguraService.formatarTempo(3900));
+    }
+    // ------------------------------------------------------------------ andamento (painel sobre o mapa)
+
+    /** Guarda os avisos de andamento como "ETAPA:ESTADO" e os detalhes, na ordem em que chegam. */
+    private static final class Avisos implements ProgressoRota {
+        final List<ProgressoRota.Evento> eventos = java.util.Collections.synchronizedList(new ArrayList<>());
+        volatile boolean desistiu;
+
+        @Override
+        public void informar(Evento evento) {
+            eventos.add(evento);
+        }
+
+        @Override
+        public boolean cancelado() {
+            return desistiu;
+        }
+
+        List<String> de(String etapa) {
+            synchronized (eventos) {
+                return eventos.stream().filter(e -> e.etapa().equals(etapa)).map(Evento::estado).toList();
+            }
+        }
+
+        String ultimoDetalhe(String etapa) {
+            synchronized (eventos) {
+                return eventos.stream().filter(e -> e.etapa().equals(etapa)).reduce((a, b) -> b).map(Evento::detalhe).orElse(null);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Andamento: cada consulta externa é avisada ao começar e ao terminar, com a fonte")
+    void andamentoDasEtapas() {
+        elevacoes(d -> d < 1 ? 4.0 : (d > 400 && d < 600 ? 20.0 : 4.0), p -> 4.0 + Geo.distanciaMetros(LAT, LON, p[0], p[1]) / 50);
+        double[] meio = Geo.deslocar(LAT, LON, 250, 90);
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of(setor("H1", meio[0], meio[1], 60, true)));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+        Avisos avisos = new Avisos();
+
+        RotaSeguraResponse r = service.calcular(LAT, LON, ModoRota.A_PE, avisos);
+
+        assertEquals("ROTA_ENCONTRADA", r.status());
+        // primeiro o plano completo, com todas as etapas pendentes e na ordem da tela
+        assertEquals(List.of("ALTURA", "SETORES", "CAMINHO", "PERFIL"),
+                avisos.eventos.subList(0, 4).stream().map(ProgressoRota.Evento::etapa).toList());
+        assertTrue(avisos.eventos.subList(0, 4).stream().allMatch(e -> e.estado().equals("PENDENTE")));
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "CONCLUIDA"), avisos.de("ALTURA"));
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "CONCLUIDA"), avisos.de("SETORES"));
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "CONCLUIDA"), avisos.de("CAMINHO"));
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "CONCLUIDA"), avisos.de("PERFIL"));
+        assertEquals("85 pontos analisados", avisos.ultimoDetalhe("ALTURA"));
+        assertEquals("1 área de risco de inundação encontrada", avisos.ultimoDetalhe("SETORES"));
+        assertEquals("600 m pelas ruas", avisos.ultimoDetalhe("CAMINHO"));
+        ProgressoRota.Evento caminho = avisos.eventos.stream()
+                .filter(e -> e.etapa().equals("CAMINHO") && e.estado().equals("EM_ANDAMENTO")).findFirst().orElseThrow();
+        assertEquals("desviando de 1 área de risco", caminho.detalhe());
+        assertEquals("Caminho pelas ruas", caminho.rotulo());
+        assertTrue(caminho.fonte().contains("Valhalla"));
+        assertTrue(avisos.eventos.stream().filter(e -> e.etapa().equals("SETORES")).allMatch(e -> e.fonte().contains("SGB")));
+
+        // a mesma consulta logo depois vem do cache, sem etapas
+        Avisos deNovo = new Avisos();
+        service.calcular(LAT, LON, ModoRota.A_PE, deNovo);
+        assertTrue(deNovo.eventos.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Andamento: nova tentativa sem desvio e falhas aparecem na etapa certa")
+    void andamentoComFalhas() {
+        elevacoes(d -> d > 400 && d < 600 ? 20.0 : 4.0, p -> null);
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenThrow(new IntegracaoExternaException("SGB", "fora do ar"));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+        Avisos avisos = new Avisos();
+
+        RotaSeguraResponse r = service.calcular(LAT, LON, ModoRota.CARRO, avisos);
+
+        assertEquals("ROTA_ENCONTRADA", r.status());
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "FALHOU"), avisos.de("SETORES"));
+        assertTrue(avisos.ultimoDetalhe("SETORES").contains("não vai desviar"));
+        assertEquals("traçando o caminho", avisos.eventos.stream()
+                .filter(e -> e.etapa().equals("CAMINHO") && e.estado().equals("EM_ANDAMENTO")).findFirst().orElseThrow().detalhe());
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "FALHOU"), avisos.de("PERFIL"), "perfil sem altura dos pontos");
+
+        // destino escolhido: o desvio falha, a segunda tentativa é avisada
+        double[] destino = Geo.deslocar(LAT, LON, 2000, 30);
+        double[] meio = Geo.deslocar(LAT, LON, 1000, 30);
+        org.mockito.Mockito.reset(elevacao, sgb, roteador);
+        when(elevacao.elevacoes(anyList())).thenAnswer(inv -> ((List<?>) inv.getArgument(0)).stream().map(p -> 10.0).toList());
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of(setor("H1", meio[0], meio[1], 80, true)));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), argThat(l -> l != null && !l.isEmpty())))
+                .thenThrow(new IntegracaoExternaException(ValhallaClient.FONTE, "sem caminho"));
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), argThat(l -> l != null && l.isEmpty())))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+        Avisos escolhido = new Avisos();
+
+        service.calcularAte(LAT, LON, destino[0], destino[1], ModoRota.A_PE, escolhido);
+
+        assertEquals(List.of("PENDENTE", "EM_ANDAMENTO", "EM_ANDAMENTO", "CONCLUIDA"), escolhido.de("CAMINHO"));
+        List<String> detalhes = escolhido.eventos.stream().filter(e -> e.etapa().equals("CAMINHO") && e.estado().equals("EM_ANDAMENTO"))
+                .map(ProgressoRota.Evento::detalhe).toList();
+        assertEquals(List.of("desviando de 1 área de risco", "nova tentativa, sem o desvio (a anterior não deu certo)"), detalhes);
+        assertEquals("Altura da partida e do destino", escolhido.eventos.get(0).rotulo());
+        assertEquals("2 pontos analisados", escolhido.ultimoDetalhe("ALTURA"));
+    }
+
+    @Test
+    @DisplayName("Andamento: roteador fora do ar marca a etapa do caminho como falha")
+    void andamentoSemRoteador() {
+        elevacoes(d -> d > 400 && d < 600 ? 20.0 : 4.0, p -> 10.0);
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of());
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenThrow(new IntegracaoExternaException(ValhallaClient.FONTE, "fora do ar"));
+        Avisos avisos = new Avisos();
+
+        RotaSeguraResponse r = service.calcular(LAT, LON, ModoRota.A_PE, avisos);
+
+        assertEquals("ROTA_INDISPONIVEL", r.status());
+        List<String> caminho = avisos.de("CAMINHO");
+        assertEquals("FALHOU", caminho.get(caminho.size() - 1));
+        assertTrue(avisos.eventos.stream().anyMatch(e -> e.detalhe() != null && e.detalhe().startsWith("testando outro ponto alto (2 de 3)")));
+        assertEquals(List.of("PENDENTE"), avisos.de("PERFIL"), "sem caminho, não há perfil");
+    }
+
+    @Test
+    @DisplayName("Quem desistiu (cancelou ou fechou a página) não gasta chamadas ao roteador")
+    void cancelamento() {
+        elevacoes(d -> d > 400 && d < 600 ? 20.0 : 4.0, p -> 10.0);
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of());
+        Avisos avisos = new Avisos();
+        avisos.desistiu = true;
+
+        assertThrows(ProgressoRota.CalculoCanceladoException.class, () -> service.calcular(LAT, LON, ModoRota.A_PE, avisos));
+        verify(roteador, never()).rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList());
+
+        // o cancelamento não fica no cache: quem pedir de novo recebe a rota
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+        assertEquals("ROTA_ENCONTRADA", service.calcular(LAT, LON, ModoRota.A_PE).status());
+    }
+
+    @Test
+    @DisplayName("Uma falha ao avisar o andamento não interrompe o cálculo")
+    void andamentoComErroNaTela() {
+        elevacoes(d -> d > 400 && d < 600 ? 20.0 : 4.0, p -> 10.0);
+        when(sgb.buscarProximos(anyDouble(), anyDouble(), anyInt())).thenReturn(List.of());
+        when(roteador.rota(anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), anyList()))
+                .thenAnswer(inv -> rotaAte(inv.getArgument(2), inv.getArgument(3)));
+
+        RotaSeguraResponse r = service.calcular(LAT, LON, ModoRota.A_PE, e -> {
+            throw new IllegalStateException("tela fechada");
+        });
+
+        assertEquals("ROTA_ENCONTRADA", r.status());
     }
 }
