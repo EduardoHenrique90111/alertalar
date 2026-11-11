@@ -1,4 +1,4 @@
-// Rota segura: ponto de partida (localização, clique ou endereço) → caminho até terreno mais alto.
+// Rota segura: ponto de partida (localização, clique ou endereço) → caminho até o destino escolhido.
 /* global L */
 import { api, apiComAndamento } from '../api.js';
 import { el, iniciarCabecalho, limpar, mensagem, preencherUfs, numero } from '../ui.js';
@@ -105,7 +105,6 @@ mapa.eachLayer((camada) => {
 
 let marcadorPartida = null;
 let marcadorDestino = null;
-let tipoDestino = 'ALTO'; // ALTO: terreno mais alto automático; ESCOLHIDO: lugar escolhido pela pessoa
 let modo = 'A_PE';
 let ultimaRota = null;
 
@@ -213,14 +212,15 @@ function definirPartida(latlng, origem, descricao) {
   $('remover-partida').hidden = false;
   botaoCalcular.disabled = false;
   if (origem !== 'endereco') marcarTratado(formBusca); // GPS ou mapa: o texto do campo não vale mais
-  if (descartarRotaEmCalculo() || ultimaRota) {
+  // Com o destino já escolhido, o caminho é calculado (e a rota antiga, se houver, some)
+  if (descartarRotaEmCalculo() || ultimaRota || marcadorDestino) {
     apagarRota();
     clearTimeout(temporizadorRecalculo);
     temporizadorRecalculo = setTimeout(calcular, 500);
   }
 }
 
-/** Destino escolhido pela pessoa (só no modo "um lugar que eu escolher"). */
+/** Destino escolhido pela pessoa (endereço, nome do local ou ponto no mapa). */
 function definirDestino(latlng, origem, descricao) {
   if (!marcadorDestino) {
     marcadorDestino = L.marker(latlng, { icon: icone('destino'), draggable: true, title: 'Destino', zIndexOffset: 950 }).addTo(mapa);
@@ -333,26 +333,18 @@ function podeCalcular() {
 }
 formBusca.addEventListener('input', () => { if (!operacao) botaoCalcular.disabled = !podeCalcular(); });
 
-// Para onde: terreno mais alto (automático) ou um lugar escolhido
-document.querySelectorAll('input[name="tipo-destino"]').forEach((radio) => radio.addEventListener('change', () => {
-  if (!radio.checked) return;
-  tipoDestino = radio.value;
-  const escolhido = tipoDestino === 'ESCOLHIDO';
-  $('bloco-destino').classList.toggle('oculto', !escolhido);
-  if (escolhido) {
-    // a cidade do destino costuma ser a mesma da partida
-    if (!formDestino.cidade.value) formDestino.cidade.value = formBusca.cidade.value;
-    if (!formDestino.estado.value) formDestino.estado.value = formBusca.estado.value;
-    if (marcadorDestino && !mapa.hasLayer(marcadorDestino)) marcadorDestino.addTo(mapa);
-    formDestino.rua.focus();
-  } else if (marcadorDestino) {
-    mapa.removeLayer(marcadorDestino);
-  }
-  if (ultimaRota) {
-    apagarRota();
-    if (!escolhido || marcadorDestino) calcular();
-  }
-}));
+/** A cidade do destino costuma ser a da partida: preenche se a pessoa ainda não escreveu outra. */
+function sugerirCidadeDoDestino() {
+  if (!formDestino.cidade.value.trim() && formBusca.cidade.value.trim()) formDestino.cidade.value = formBusca.cidade.value.trim();
+  if (!formDestino.estado.value && formBusca.estado.value) formDestino.estado.value = formBusca.estado.value;
+}
+
+/** Partida definida e ainda sem destino: convida a escolher o destino. */
+function pedirDestino(texto, { focar = true } = {}) {
+  mensagem(msg, 'info', texto);
+  sugerirCidadeDoDestino();
+  if (focar) formDestino.rua.focus({ preventScroll: true });
+}
 
 $('botao-local').addEventListener('click', () => {
   limpar(msg);
@@ -363,7 +355,7 @@ $('botao-local').addEventListener('click', () => {
   const botao = $('botao-local');
   botao.disabled = true;
   botao.textContent = 'Obtendo localização…';
-  const op = iniciarOperacao('Calculando a rota segura');
+  const op = iniciarOperacao(marcadorDestino ? 'Calculando a rota segura' : 'Obtendo sua localização');
   painel.etapa('GPS', {
     estado: 'EM_ANDAMENTO', rotulo: 'Sua localização', fonte: 'o GPS do aparelho',
     demora: { apos: 6000, texto: 'O GPS está demorando para achar o sinal. Perto de uma janela ou ao ar livre costuma ser mais rápido.' },
@@ -379,7 +371,13 @@ $('botao-local').addEventListener('click', () => {
       acompanharUsuario();
       mapa.setView(ll, 16);
       definirPartida(ll, 'gps');
-      calcular({ continuar: true });
+      if (marcadorDestino) {
+        calcular({ continuar: true });
+      } else {
+        encerrarOperacao(op);
+        restaurarBotoes();
+        pedirDestino('Partida definida pela sua localização. Agora escolha para onde ir.');
+      }
     },
     () => {
       if (!encerrarOperacao(op)) return;
@@ -467,7 +465,7 @@ async function buscar(form, op) {
 
 const formDestino = $('form-destino');
 preencherUfs(formDestino.estado);
-configurarBusca(formBusca, $('b-opcoes'), (c) => escolherCandidato(c, definirPartida), 'Endereço da partida');
+configurarBusca(formBusca, $('b-opcoes'), (c) => { escolherCandidato(c, definirPartida); sugerirCidadeDoDestino(); }, 'Endereço da partida');
 configurarBusca(formDestino, $('d-opcoes'), (c) => escolherCandidato(c, definirDestino), 'Endereço do destino');
 
 document.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => {
@@ -504,7 +502,7 @@ async function calcular({ continuar = false } = {}) {
     if (texto) mensagem(msg, 'atencao', texto);
   };
   // Endereço digitado e ainda não buscado: busca primeiro (e calcula em seguida)
-  const pendente = [formBusca].concat(tipoDestino === 'ESCOLHIDO' ? [formDestino] : []).find(textoPendente);
+  const pendente = [formBusca, formDestino].find(textoPendente);
   if (pendente) {
     if (!camposDeBuscaCompletos(pendente)) {
       desistir();
@@ -520,18 +518,14 @@ async function calcular({ continuar = false } = {}) {
     desistir('Defina de onde você sai: use sua localização, busque um endereço ou clique no mapa.');
     return;
   }
-  const destinoEscolhido = tipoDestino === 'ESCOLHIDO';
-  if (destinoEscolhido && !marcadorDestino) {
-    desistir('Escolha o destino: busque o endereço ou o nome do local, ou clique no mapa.');
+  if (!marcadorDestino) {
+    desistir();
+    pedirDestino('Escolha o destino: busque o endereço ou o nome do local, ou marque no mapa.');
     return;
   }
   const p = marcadorPartida.getLatLng();
-  const params = { lat: p.lat.toFixed(6), lon: p.lng.toFixed(6), modo };
-  if (destinoEscolhido) {
-    const d = marcadorDestino.getLatLng();
-    params.destLat = d.lat.toFixed(6);
-    params.destLon = d.lng.toFixed(6);
-  }
+  const d = marcadorDestino.getLatLng();
+  const params = { lat: p.lat.toFixed(6), lon: p.lng.toFixed(6), destLat: d.lat.toFixed(6), destLon: d.lng.toFixed(6), modo };
   const op = atual || iniciarOperacao('Calculando a rota segura');
   if (!atual) mostrarMapa();
   op.calculandoRota = true;
@@ -585,17 +579,7 @@ function renderizar(r) {
     L.polyline(r.trajeto.coordenadas, { color: '#12355b', weight: 5 }).bindTooltip('Caminho sugerido', { sticky: true }).addTo(camadaResultado);
     r.trajeto.coordenadas.forEach((c) => limites.push(c));
   }
-  if (r.destino && !r.destino.escolhido) {
-    L.marker([r.destino.latitude, r.destino.longitude], { icon: icone('seguro'), title: 'Terreno mais alto', zIndexOffset: 900 })
-      .bindPopup(popup('Terreno mais alto', `Cerca de ${Math.round(r.destino.ganhoElevacao)} m acima da partida`, `Altitude aproximada: ${Math.round(r.destino.elevacao)} m`))
-      .addTo(camadaResultado);
-  }
   if (r.destino) limites.push([r.destino.latitude, r.destino.longitude]);
-  (r.alternativas || []).forEach((a) => {
-    L.marker([a.latitude, a.longitude], { icon: icone('alternativa'), title: 'Outro ponto alto próximo' })
-      .bindPopup(popup('Outro ponto mais alto', a.elevacao !== null ? `Altitude aproximada: ${Math.round(a.elevacao)} m` : null))
-      .addTo(camadaResultado);
-  });
   const baixo = r.perfil && r.origem.elevacao !== null && r.perfil.elevacaoMinima < r.origem.elevacao - 2 && r.perfil.distanciaPontoMaisBaixo > 50;
   if (baixo) {
     L.marker(r.perfil.pontoMaisBaixo, { icon: icone('relato'), title: 'Trecho mais baixo do caminho' })
@@ -617,7 +601,7 @@ function renderizar(r) {
       r.destino.ganhoElevacao === null ? null
         : Math.abs(r.destino.ganhoElevacao) < 1 ? medida('0 m', 'mesma altura da partida')
         : medida((r.destino.ganhoElevacao >= 0 ? '+' : '−') + Math.abs(Math.round(r.destino.ganhoElevacao)) + ' m',
-          r.destino.escolhido ? 'de altura do destino em relação à partida' : 'de altura em relação à partida')].filter(Boolean));
+          'de altura do destino em relação à partida')].filter(Boolean));
   }
   $('r-destino').textContent = r.destino ? r.destino.descricao : '';
 
@@ -708,5 +692,5 @@ if (!Number.isNaN(latP) && !Number.isNaN(lonP)) {
   const ll = L.latLng(latP, lonP);
   mapa.setView(ll, 16);
   definirPartida(ll, 'link');
-  calcular();
+  pedirDestino('A partida é o endereço da sua consulta. Agora escolha para onde ir.', { focar: false });
 }

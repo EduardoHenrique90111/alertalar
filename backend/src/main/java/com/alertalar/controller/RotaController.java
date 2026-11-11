@@ -28,7 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Rota segura até um terreno mais alto, a partir de um ponto (localização atual ou endereço). */
+/** Rota segura da partida (localização atual, endereço ou ponto no mapa) até o destino escolhido. */
 @RestController
 @RequestMapping("/api/rotas")
 public class RotaController implements DisposableBean {
@@ -53,18 +53,15 @@ public class RotaController implements DisposableBean {
         executor.shutdownNow();
     }
 
-    /**
-     * Ex.: GET /api/rotas/segura?lat=-29.92&lon=-51.18&modo=A_PE (destino: terreno mais alto, escolhido
-     * automaticamente) ou com destLat/destLon para um destino escolhido pela pessoa.
-     */
+    /** Ex.: GET /api/rotas/segura?lat=-29.92&lon=-51.18&destLat=-29.91&destLon=-51.17&modo=A_PE */
     @GetMapping("/segura")
     public RotaSeguraResponse segura(@RequestParam @DecimalMin("-34.0") @DecimalMax("5.5") double lat,
                                      @RequestParam @DecimalMin("-74.2") @DecimalMax("-28.6") double lon,
                                      @RequestParam(defaultValue = "A_PE") ModoRota modo,
                                      @RequestParam(required = false) @DecimalMin("-34.0") @DecimalMax("5.5") Double destLat,
                                      @RequestParam(required = false) @DecimalMin("-74.2") @DecimalMax("-28.6") Double destLon) {
-        exigirDestinoCompleto(destLat, destLon);
-        return destLat == null ? service.calcular(lat, lon, modo) : service.calcularAte(lat, lon, destLat, destLon, modo);
+        exigirDestino(destLat, destLon);
+        return service.calcular(lat, lon, destLat, destLon, modo);
     }
 
     /**
@@ -84,14 +81,10 @@ public class RotaController implements DisposableBean {
                                          @RequestParam(required = false) @DecimalMin("-34.0") @DecimalMax("5.5") Double destLat,
                                          @RequestParam(required = false) @DecimalMin("-74.2") @DecimalMax("-28.6") Double destLon,
                                          HttpServletResponse resposta) {
-        exigirDestinoCompleto(destLat, destLon);
+        exigirDestino(destLat, destLon);
         // Pede aos proxies (ex.: Nginx) que repassem cada evento na hora, sem juntar tudo no fim
         resposta.setHeader("X-Accel-Buffering", "no");
-        if (destLat == null) {
-            service.validarPartida(lat, lon);
-        } else {
-            service.validarDestino(lat, lon, destLat, destLon);
-        }
+        service.validar(lat, lon, destLat, destLon);
         SseEmitter emissor = new SseEmitter(TEMPO_MAXIMO.toMillis());
         Envio envio = new Envio(emissor);
         emissor.onError(e -> envio.desistir());
@@ -103,9 +96,7 @@ public class RotaController implements DisposableBean {
         });
         executor.execute(() -> {
             try {
-                RotaSeguraResponse r = destLat == null
-                        ? service.calcular(lat, lon, modo, envio)
-                        : service.calcularAte(lat, lon, destLat, destLon, modo, envio);
+                RotaSeguraResponse r = service.calcular(lat, lon, destLat, destLon, modo, envio);
                 envio.enviar("resultado", r);
             } catch (CalculoCanceladoException e) {
                 log.debug("Rota cancelada por quem pediu.");
@@ -124,9 +115,9 @@ public class RotaController implements DisposableBean {
         return emissor;
     }
 
-    private static void exigirDestinoCompleto(Double destLat, Double destLon) {
-        if ((destLat == null) != (destLon == null)) {
-            throw new IllegalArgumentException("Informe destLat e destLon juntos, ou nenhum dos dois.");
+    private static void exigirDestino(Double destLat, Double destLon) {
+        if (destLat == null || destLon == null) {
+            throw new IllegalArgumentException("Informe o destino da rota: destLat e destLon.");
         }
     }
 

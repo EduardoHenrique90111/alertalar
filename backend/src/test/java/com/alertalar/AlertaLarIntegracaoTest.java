@@ -317,31 +317,33 @@ class AlertaLarIntegracaoTest {
 
     @Test
     @Order(12)
-    @DisplayName("Rota segura: destino mais alto, caminho do roteador e validação dos parâmetros")
+    @DisplayName("Rota segura: caminho até o destino escolhido, destino obrigatório e validação dos parâmetros")
     void rotaSegura() throws Exception {
         respostaSgb.set(RespostasSimuladas.sgbSemSetores());
         Cliente c = new Cliente();
-        JsonNode r = c.getJson("/api/rotas/segura?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON + "&modo=A_PE");
+        JsonNode r = c.getJson("/api/rotas/segura?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON
+                + "&modo=A_PE&destLat=-29.9100&destLon=-51.1700");
         assertEquals("ROTA_ENCONTRADA", r.path("status").asString(), r.toString());
-        assertEquals(5, r.path("destino").path("ganhoElevacao").asInt());
+        assertEquals(-29.91, r.path("destino").path("latitude").asDouble(), 1e-9);
         assertEquals(260, r.path("trajeto").path("distanciaMetros").asInt());
         assertEquals(3, r.path("trajeto").path("coordenadas").size());
         assertEquals("Vire à esquerda na Rua do Morro.", r.path("trajeto").path("instrucoes").get(1).path("texto").asString());
+        assertTrue(r.path("mensagem").asString().endsWith("até o destino escolhido."), r.path("mensagem").asString());
         assertTrue(textoContem(r.path("avisos"), "193"));
+        assertTrue(r.path("alternativas").isMissingNode(), "não há mais terreno alto automático");
+        assertTrue(r.path("destino").path("escolhido").isMissingNode());
         assertEquals(1, apis.contar("/valhalla/route"));
 
-        assertFalse(r.path("destino").path("escolhido").asBoolean());
-
-        JsonNode escolhido = c.getJson("/api/rotas/segura?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON
-                + "&modo=CARRO&destLat=-29.9100&destLon=-51.1700");
-        assertEquals("ROTA_ENCONTRADA", escolhido.path("status").asString(), escolhido.toString());
-        assertTrue(escolhido.path("destino").path("escolhido").asBoolean());
-        assertEquals(-29.91, escolhido.path("destino").path("latitude").asDouble(), 1e-9);
+        // O destino é obrigatório: sem ele (ou incompleto), resposta 400 com a explicação
+        HttpResponse<String> semDestino = c.enviar("GET", "/api/rotas/segura?lat=-29.92&lon=-51.18", null, false);
+        assertEquals(400, semDestino.statusCode());
+        assertTrue(json.readTree(semDestino.body()).path("detail").asString().contains("Informe o destino"), semDestino.body());
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.92&lon=-51.18&destLat=-29.91", null, false).statusCode(),
                 "destino incompleto");
-
-        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=40.7&lon=-74.0", null, false).statusCode(), "fora do Brasil");
-        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9&lon=-51.1&modo=AVIAO", null, false).statusCode());
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=40.7&lon=-74.0&destLat=40.71&destLon=-74.0", null, false)
+                .statusCode(), "fora do Brasil");
+        assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9&lon=-51.1&destLat=-29.91&destLon=-51.1&modo=AVIAO", null,
+                false).statusCode());
         assertEquals(400, c.enviar("GET", "/api/rotas/segura?lat=-29.9", null, false).statusCode());
     }
 
@@ -351,7 +353,8 @@ class AlertaLarIntegracaoTest {
     void rotaSeguraComAndamento() throws Exception {
         respostaSgb.set(RespostasSimuladas.sgbSemSetores());
         HttpClient http = HttpClient.newHttpClient();
-        String caminho = "/api/rotas/segura/progresso?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON + "&modo=CARRO";
+        String caminho = "/api/rotas/segura/progresso?lat=" + RespostasSimuladas.LAT + "&lon=" + RespostasSimuladas.LON
+                + "&destLat=-29.9100&destLon=-51.1700&modo=CARRO";
         HttpResponse<String> r = http.send(pedidoEventos(caminho), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
         assertEquals(200, r.statusCode(), r.body());
@@ -374,7 +377,7 @@ class AlertaLarIntegracaoTest {
         assertEquals("CARRO", rota.path("modo").asString());
 
         // Parâmetros inválidos: recusados antes do andamento, com a resposta de erro comum da API
-        HttpResponse<String> fora = http.send(pedidoEventos("/api/rotas/segura/progresso?lat=40.7&lon=-74.0"),
+        HttpResponse<String> fora = http.send(pedidoEventos("/api/rotas/segura/progresso?lat=40.7&lon=-74.0&destLat=40.71&destLon=-74.0"),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         assertEquals(400, fora.statusCode());
         assertTrue(fora.headers().firstValue("Content-Type").orElse("").contains("json"), fora.headers().toString());

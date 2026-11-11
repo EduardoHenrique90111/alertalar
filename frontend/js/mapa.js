@@ -16,10 +16,10 @@ export function criarMapa(elemento, { centro = CENTRO_BRASIL, zoom = 4 } = {}) {
   return mapa;
 }
 
-/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | destino | oficial | relato | agua | seguro | alternativa | usuario */
+/** Marcadores em CSS (sem imagens externas nem estilos inline). tipo: imovel | destino | oficial | relato | agua | usuario */
 export function icone(tipo) {
   const pino = tipo === 'imovel' || tipo === 'destino';
-  const tamanho = pino ? 30 : tipo === 'seguro' ? 26 : tipo === 'usuario' ? 20 : 18;
+  const tamanho = pino ? 30 : tipo === 'usuario' ? 20 : 18;
   return L.divIcon({
     className: 'marcador marcador-' + tipo,
     html: '<span></span>',

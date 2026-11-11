@@ -93,14 +93,13 @@
 
   <section class="bloco" aria-labelledby="t-rota">
     <h2 id="t-rota">Rota segura</h2>
-    <p>A página <a href="/rota.html">Rota segura</a> sugere um caminho a pé ou de carro até um terreno mais alto. Ela não é uma rota oficial de evacuação: em emergência, siga sempre a Defesa Civil (199).</p>
+    <p>A página <a href="/rota.html">Rota segura</a> sugere um caminho a pé ou de carro até o lugar que você escolher (casa de parente, abrigo, ponto de apoio). Ela não é uma rota oficial de evacuação: em emergência, siga sempre a Defesa Civil (199).</p>
     <ul class="regras">
-      <li><strong>Destino:</strong> a altura do terreno é consultada em cerca de 85 pontos até 3 km da partida (Copernicus DEM GLO-90). Vale um ponto pelo menos 10 m mais alto que a partida (ou 5 m, se não houver) e fora dos setores de risco hidrológico do Serviço Geológico do Brasil. Entre os válidos, o mais próximo.</li>
+      <li><strong>Destino:</strong> endereço, nome do local ou ponto marcado no mapa, até 20 km da partida em linha reta.</li>
       <li><strong>Caminho:</strong> calculado sobre as ruas do OpenStreetMap pelo serviço Valhalla, com os setores de risco hidrológico próximos marcados como áreas a evitar. Se não houver caminho que desvie de todos, o resultado avisa.</li>
-      <li><strong>Conferência:</strong> o caminho é comparado de novo com os setores de risco e com a altura do terreno. Trechos que passam por setores ou que descem mais de 2 m abaixo da partida aparecem como aviso.</li>
-      <li><strong>Destino escolhido:</strong> a pessoa também pode escolher o destino (endereço, nome do local ou ponto no mapa, até 20 km). O caminho desvia dos setores de risco entre a partida e o destino, e o resultado avisa se o destino fica dentro de um setor ou mais baixo que a partida.</li>
-      <li><strong>Andamento na tela:</strong> enquanto o caminho é calculado, um painel sobre o mapa mostra cada consulta no momento em que ela acontece (GPS, endereço no OpenStreetMap, altura do terreno, áreas de risco do SGB, caminho no Valhalla e perfil de altura), o tempo de cada uma e um aviso quando algum serviço demora mais que o normal. Dá para cancelar a qualquer momento.</li>
-      <li><strong>Limites:</strong> o cálculo não sabe quais ruas estão alagadas ou bloqueadas agora, e a altura do terreno tem erro de alguns metros. Já estar em terreno alto e não haver ponto mais alto por perto também são respostas possíveis.</li>
+      <li><strong>Conferência:</strong> o caminho é comparado de novo com os setores de risco e com a altura do terreno em 60 pontos (Copernicus DEM GLO-90). Trechos que passam por setores ou que descem mais de 2 m abaixo da partida aparecem como aviso, assim como um destino dentro de um setor ou mais baixo que a partida.</li>
+      <li><strong>Andamento na tela:</strong> enquanto o caminho é calculado, um painel sobre o mapa mostra cada consulta no momento em que ela acontece (GPS, endereço no OpenStreetMap, altura da partida e do destino, áreas de risco do SGB, caminho no Valhalla e perfil de altura), o tempo de cada uma e um aviso quando algum serviço demora mais que o normal. Dá para cancelar a qualquer momento.</li>
+      <li><strong>Limites:</strong> o cálculo não sabe quais ruas estão alagadas ou bloqueadas agora, e a altura do terreno tem erro de alguns metros.</li>
     </ul>
   </section>
 
@@ -113,13 +112,12 @@
       <li>Registros oficiais do S2iD são municipais e não indicam a rua afetada. O sistema já inclui a base consolidada do Atlas Digital de Desastres (v1.1, 1991 a 2025, todos os municípios); eventos mais recentes entram quando uma planilha nova é importada.</li>
       <li>A ausência de registro oficial não significa que o município nunca teve enchente: depende de a prefeitura ter registrado o evento no S2iD.</li>
       <li>A geocodificação pode errar o ponto. Por isso você confirma a posição no mapa antes da análise.</li>
-      <li>Não há integração ativa com CEMADEN, INMET e ANA (veja a situação de cada fonte abaixo).</li>
     </ul>
   </section>
 
   <section class="bloco" aria-labelledby="t-fontes">
     <h2 id="t-fontes">Fontes de dados</h2>
-    <p class="texto-secundario">Situação atual de cada integração, lida diretamente do sistema.</p>
+    <p class="texto-secundario">Fontes que o AlertaLar consulta e a data da última atualização de cada uma, lidas diretamente do sistema.</p>
     <div class="tabela-rolagem">
       <table>
         <thead><tr><th scope="col">Fonte</th><th scope="col">Situação</th><th scope="col">Última atualização</th><th scope="col">Descrição</th></tr></thead>
@@ -140,7 +138,7 @@
         <h2>Navegação</h2>
         <ul>
           <li><a href="/#consultar">Consultar endereço</a></li>
-          <li><a href="/rota.html">Rota segura até terreno mais alto</a></li>
+          <li><a href="/rota.html">Rota segura</a></li>
           <li><a href="/ocorrencias.html">Ocorrências registradas</a></li>
           <li><a href="/relatar.html">Relatar um alagamento</a></li>
           <li><a href="/metodologia.html">Metodologia e fontes</a></li>

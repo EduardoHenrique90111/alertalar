@@ -4,10 +4,9 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Rota sugerida até um terreno mais alto (ou até um destino escolhido pela pessoa), desviando de
- * áreas de risco mapeadas.
+ * Rota sugerida até o destino escolhido pela pessoa, desviando de áreas de risco mapeadas.
  *
- * @param status ROTA_ENCONTRADA, JA_EM_TERRENO_ALTO, SEM_TERRENO_ALTO ou ROTA_INDISPONIVEL
+ * @param status ROTA_ENCONTRADA ou ROTA_INDISPONIVEL (o serviço de rotas não conseguiu traçar o caminho)
  */
 public record RotaSeguraResponse(
         String status,
@@ -19,7 +18,6 @@ public record RotaSeguraResponse(
         Trajeto trajeto,
         Perfil perfil,
         List<SetorMapa> setoresRisco,
-        List<Ponto> alternativas,
         List<String> avisos,
         List<String> fontes,
         Instant calculadoEm) {
@@ -30,10 +28,9 @@ public record RotaSeguraResponse(
 
     /**
      * @param ganhoElevacao diferença de altura em relação à partida (negativa se o destino é mais baixo)
-     * @param escolhido     true quando o destino foi escolhido pela pessoa (e não o terreno alto automático)
      */
     public record Destino(double latitude, double longitude, Double elevacao, Double ganhoElevacao,
-                          double distanciaRetaMetros, String descricao, boolean escolhido) {
+                          double distanciaRetaMetros, String descricao) {
     }
 
     /**
