@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rota segura | AlertaLar</title>
-  <meta name="description" content="Caminho a pé ou de carro até um terreno mais alto, desviando das áreas de risco de inundação mapeadas.">
+  <meta name="description" content="Caminho a pé ou de carro até o lugar que você escolher, desviando das áreas de risco de inundação mapeadas.">
   <link rel="icon" href="/assets/icone.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="/css/estilo.css">
@@ -31,7 +31,7 @@
 
 <main id="conteudo" class="conteiner pagina">
   <h1>Rota segura</h1>
-  <p class="introducao texto-secundario">Caminho a pé ou de carro até um terreno mais alto, ou até um lugar que você escolher, desviando das áreas de risco de inundação mapeadas pelo Serviço Geológico do Brasil.</p>
+  <p class="introducao texto-secundario">Caminho a pé ou de carro até o lugar que você escolher (casa de parente, abrigo, ponto de apoio), desviando das áreas de risco de inundação mapeadas pelo Serviço Geológico do Brasil.</p>
 
   <div class="alerta-emergencia" role="note">
     <strong>Em perigo agora?</strong>
@@ -68,17 +68,8 @@
         <button type="button" class="botao-link" id="remover-partida" hidden>Remover partida</button></p>
 
       <h2 class="passo-titulo" id="t-destino"><span class="passo" aria-hidden="true">2</span>Para onde</h2>
-      <fieldset class="escolha-destino" aria-labelledby="t-destino">
-        <label class="opcao-radio">
-          <input type="radio" name="tipo-destino" value="ALTO" checked>
-          <span><strong>Terreno mais alto mais perto</strong><span class="dica">O AlertaLar escolhe um ponto mais alto, fora das áreas de risco.</span></span>
-        </label>
-        <label class="opcao-radio">
-          <input type="radio" name="tipo-destino" value="ESCOLHIDO">
-          <span><strong>Um lugar que eu escolher</strong><span class="dica">Casa de parente, abrigo, shopping… O caminho desvia das áreas de risco.</span></span>
-        </label>
-      </fieldset>
-      <div id="bloco-destino" class="oculto">
+      <p class="dica">Casa de parente, abrigo, shopping… O caminho desvia das áreas de risco.</p>
+      <div id="bloco-destino">
         <form id="form-destino" novalidate>
           <div class="campos">
             <div class="campo dois-tercos">
@@ -129,8 +120,7 @@
       <ul class="legenda-mapa">
         <li><i class="l-usuario"></i>Você está aqui</li>
         <li><i class="l-imovel"></i>Partida</li>
-        <li><i class="l-seguro"></i>Terreno mais alto</li>
-        <li><i class="l-destino"></i>Destino escolhido</li>
+        <li><i class="l-destino"></i>Destino</li>
         <li><i class="l-rota"></i>Caminho sugerido</li>
         <li><i class="l-setor"></i>Área de risco (SGB)</li>
         <li><i class="l-relato"></i>Trecho mais baixo</li>
@@ -179,7 +169,7 @@
         <h2>Navegação</h2>
         <ul>
           <li><a href="/#consultar">Consultar endereço</a></li>
-          <li><a href="/rota.html">Rota segura até terreno mais alto</a></li>
+          <li><a href="/rota.html">Rota segura</a></li>
           <li><a href="/ocorrencias.html">Ocorrências registradas</a></li>
           <li><a href="/relatar.html">Relatar um alagamento</a></li>
           <li><a href="/metodologia.html">Metodologia e fontes</a></li>

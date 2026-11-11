@@ -25,23 +25,21 @@ public interface ProgressoRota {
 
     /** Etapas do cálculo, na ordem em que aparecem para a pessoa. */
     enum Etapa {
-        ALTURA("Altura do terreno ao redor", "Altura da partida e do destino", "o Copernicus DEM (via Open-Meteo)"),
-        SETORES("Áreas de risco por perto", "Áreas de risco no trajeto", "o Serviço Geológico do Brasil (SGB)"),
-        CAMINHO("Caminho pelas ruas", "Caminho pelas ruas", "o Valhalla (ruas do OpenStreetMap)"),
-        PERFIL("Altura ao longo do caminho", "Altura ao longo do caminho", "o Copernicus DEM (via Open-Meteo)");
+        ALTURA("Altura da partida e do destino", "o Copernicus DEM (via Open-Meteo)"),
+        SETORES("Áreas de risco no trajeto", "o Serviço Geológico do Brasil (SGB)"),
+        CAMINHO("Caminho pelas ruas", "o Valhalla (ruas do OpenStreetMap)"),
+        PERFIL("Altura ao longo do caminho", "o Copernicus DEM (via Open-Meteo)");
 
-        private final String rotuloTerrenoAlto;
-        private final String rotuloDestinoEscolhido;
+        private final String rotulo;
         private final String fonte;
 
-        Etapa(String rotuloTerrenoAlto, String rotuloDestinoEscolhido, String fonte) {
-            this.rotuloTerrenoAlto = rotuloTerrenoAlto;
-            this.rotuloDestinoEscolhido = rotuloDestinoEscolhido;
+        Etapa(String rotulo, String fonte) {
+            this.rotulo = rotulo;
             this.fonte = fonte;
         }
 
-        public String rotulo(boolean destinoEscolhido) {
-            return destinoEscolhido ? rotuloDestinoEscolhido : rotuloTerrenoAlto;
+        public String rotulo() {
+            return rotulo;
         }
 
         public String fonte() {

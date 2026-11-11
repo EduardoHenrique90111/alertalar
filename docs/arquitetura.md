@@ -61,21 +61,19 @@ na consulta seguinte.
 
 ## Fluxo da rota segura
 
-`GET /api/rotas/segura?lat=&lon=&modo=` (`RotaSeguraService`):
+`GET /api/rotas/segura?lat=&lon=&destLat=&destLon=&modo=` (`RotaSeguraService`). O destino é
+sempre escolhido pela pessoa (endereço, nome do local ou ponto no mapa), até 20 km da partida.
 
-1. Monta uma grade de 85 pontos (a partida e 7 anéis de 12 pontos, de 250 m a 3 km) e, em
-   paralelo, pede a altura do terreno de todos numa única chamada (Open-Meteo/Copernicus) e os
-   setores de risco do SGB num raio de 3,5 km (só os hidrológicos são usados).
-2. Candidatos a destino: pontos pelo menos 5 m mais altos que a partida e fora dos setores.
-   Os 10 m+ mais altos vêm primeiro; dentro de cada grupo, o mais perto. Sem candidatos, a
-   resposta diz se o ponto já está entre os mais altos da vizinhança (`JA_EM_TERRENO_ALTO`) ou
-   se não há terreno alto por perto (`SEM_TERRENO_ALTO`).
-3. Pede o caminho ao Valhalla com os setores entre a partida e o destino em
+1. Em paralelo, pede a altura da partida e do destino (Open-Meteo/Copernicus) e os setores de
+   risco do SGB num raio de metade da distância mais 1,5 km em volta do trajeto (só os
+   hidrológicos são usados). Avisa se a partida ou o destino estão dentro de um setor, ou se o
+   destino é mais de 2 m mais baixo que a partida.
+2. Pede o caminho ao Valhalla com os setores entre a partida e o destino em
    `exclude_polygons` (até 9 km de perímetro somado, os mais próximos do trajeto primeiro).
-   Se não houver caminho com desvio, tenta sem desvio e avisa. Testa até 3 destinos e faz no
-   máximo 4 chamadas ao roteador.
-4. Confere o caminho: setores atravessados e perfil de altura em 60 pontos (aviso quando algum
-   trecho fica mais de 2 m abaixo da partida). O resultado fica 15 min em cache.
+   Se não houver caminho com desvio, tenta sem desvio e avisa.
+3. Confere o caminho: setores atravessados e perfil de altura em 60 pontos (aviso quando algum
+   trecho fica mais de 2 m abaixo da partida, ou quando a altura não pôde ser consultada).
+   O resultado fica 15 min em cache.
 
 ### Andamento em tempo real
 

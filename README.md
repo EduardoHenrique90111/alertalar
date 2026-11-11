@@ -13,8 +13,8 @@ A pessoa informa um endereço, confirma a posição no mapa e recebe duas respos
   de cada fator, as fontes usadas e a data dos dados. Não muda com o tempo do dia.
 
 A página **Rota segura** sugere um caminho a pé ou de carro, a partir da localização da pessoa
-ou de um endereço, até um terreno mais alto fora das áreas de risco de inundação mapeadas, ou
-até um lugar que a pessoa escolher (casa de parente, abrigo), desviando dessas áreas.
+ou de um endereço, até um lugar que ela escolher (casa de parente, abrigo, ponto de apoio),
+desviando das áreas de risco de inundação mapeadas.
 
 ## Objetivo
 
@@ -135,7 +135,7 @@ o navegador após editar). No `mvn package`, o front-end é copiado para dentro 
 
 1. Consulte um endereço na página inicial. Na primeira inicialização, o Flyway já carrega o
    histórico oficial de todos os municípios (veja abaixo); não é preciso importar nada.
-2. Abra **Rota segura** para testar o caminho até um terreno mais alto.
+2. Abra **Rota segura** para testar o caminho até um destino escolhido.
 3. Entre com o administrador configurado no `.env` e abra **Moderação** para validar relatos.
 
 ### Histórico oficial embutido
@@ -173,10 +173,10 @@ cd backend
 mvn test
 ```
 
-Há 179 testes (JUnit + Mockito): validação de endereços, geocodificação (com a reserva do Photon quando o Nominatim recusa pedidos), código IBGE, fatores e
+Há 174 testes (JUnit + Mockito): validação de endereços, geocodificação (com a reserva do Photon quando o Nominatim recusa pedidos), código IBGE, fatores e
 classificação de risco, risco agora (níveis de chuva do INMET e combinação com a
 suscetibilidade), processamento da consulta, registro e moderação de ocorrências, importação de
-planilhas, base oficial embutida, rota segura (escolha do destino, desvio de áreas de risco,
+planilhas, base oficial embutida, rota segura (destino escolhido, desvio de áreas de risco,
 perfil de altura, andamento em tempo real e cancelamento), tratamento de erros, segurança e comunicação HTTP com as APIs externas
 (contra um servidor local que responde no mesmo formato das APIs reais).
 
@@ -218,8 +218,8 @@ em português e, em erros de validação, o campo `erros` por campo.
 | POST | `/api/ocorrencias` | público | Envia relato (fica `PENDENTE`) |
 | GET | `/api/fontes` | público | Fontes de dados, situação da integração e última atualização |
 | GET | `/api/situacao-atual?lat=&lon=&consulta=` | público | Chuva (72 h passadas e 72 h previstas), vazão e risco agora; `consulta` (opcional, UUID) usa a suscetibilidade daquela consulta |
-| GET | `/api/rotas/segura?lat=&lon=&modo=A_PE&destLat=&destLon=` | público | Caminho até o terreno mais alto fora de áreas de risco ou, com `destLat`/`destLon`, até um destino escolhido (até 20 km), desviando das áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
-| GET | `/api/rotas/segura/progresso?` (mesmos parâmetros) | público | A mesma rota, em `text/event-stream`: eventos `etapa` (altura do terreno, áreas de risco, caminho, perfil, com a fonte consultada e o estado), depois `resultado` (a mesma resposta acima) ou `erro`. Usado pelo painel de andamento sobre o mapa; fechar a conexão interrompe o cálculo |
+| GET | `/api/rotas/segura?lat=&lon=&destLat=&destLon=&modo=A_PE` | público | Caminho até o destino escolhido (`destLat`/`destLon` obrigatórios, até 20 km), desviando das áreas de risco (`modo`: `A_PE` ou `CARRO`; 10 por minuto por IP) |
+| GET | `/api/rotas/segura/progresso?` (mesmos parâmetros) | público | A mesma rota, em `text/event-stream`: eventos `etapa` (altura da partida e do destino, áreas de risco, caminho, perfil, com a fonte consultada e o estado), depois `resultado` (a mesma resposta acima) ou `erro`. Usado pelo painel de andamento sobre o mapa; fechar a conexão interrompe o cálculo |
 | POST | `/api/auth/registro` | público | Cria conta e já entra |
 | POST | `/api/auth/login` | público | Entra (sessão) |
 | POST | `/api/auth/logout` | logado | Sai |
